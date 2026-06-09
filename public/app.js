@@ -28,6 +28,7 @@ const modalContent  = document.getElementById("modal-content");
 function getFilters() {
   return {
     tracktik_post_id: document.getElementById("f-tracktik").value.trim(),
+    tracktik_site_id: document.getElementById("f-site-id").value.trim(),
     status:           document.getElementById("f-status").value,
     date_from:        document.getElementById("f-date-from").value,
     date_to:          document.getElementById("f-date-to").value,
@@ -181,36 +182,77 @@ async function openDetail(tracktikId) {
 }
 
 function buildDetailHTML(job, cycles, history) {
-  const fields = [
-    ["TrackTik Post ID",    job.tracktik_post_id,          true],
-    ["TrackTik Site ID",    job.tracktik_site_id,          true],
-    ["GHL ID",              job.ghl_id,                    true],
-    ["Site / Position",     job.site_name_position_shift,  false],
-    ["Region",              fmtEnum(job.region),           false],
-    ["City",                fmtEnum(job.city_of_site_location), false],
-    ["State",               (job.state_of_site_location || "").toUpperCase(), false],
-    ["Zip Code",            job.zip_code_of_site,          false],
-    ["Officer Type",        fmtEnum(job.officer_type),     false],
-    ["Employment Status",   fmtEnum(job.employment_status),false],
-    ["Industry",            fmtEnum(job.industry),         false],
-    ["Hiring Manager",      fmtManager(job.hiring_manager),false],
-    ["HR Approval",         fmtEnum(job.hr_approval_status),false],
-    ["Pay Rate",            job.advertised_pay_rate,       false],
-    ["Schedule",            job.schedule,                  false],
-    ["Position Start Date", job.position_start_date,       false],
-    ["Interview Type",      fmtEnum(job.interview_type),   false],
-    ["Total Cycles",        job.total_cycles,              false],
-    ["Current Status",      fmtEnum(job.current_status),   false],
-    ["First Seen",          job.first_seen_at ? fmtDate(job.first_seen_at) : "—", false],
-  ];
+  // ── Section helper ───────────────────────────────────────
+  function row(label, val, mono = false) {
+    const display = val && val !== "null" ? esc(val) : '<span style="color:var(--text-muted)">—</span>';
+    return `
+      <div class="detail-item">
+        <div class="detail-item-label">${label}</div>
+        <div class="detail-item-value ${mono ? "mono" : ""}">${display}</div>
+      </div>`;
+  }
 
-  const detailItems = fields.map(([label, val, mono]) => `
-    <div class="detail-item">
-      <div class="detail-item-label">${label}</div>
-      <div class="detail-item-value ${mono ? "mono" : ""}">${esc(val || "—")}</div>
-    </div>
-  `).join("");
+  // ── Identity ─────────────────────────────────────────────
+  const identityFields = `
+    ${row("TrackTik Post ID",  job.tracktik_post_id, true)}
+    ${row("TrackTik Site ID",  job.tracktik_site_id, true)}
+    ${row("GHL ID",            job.ghl_id,           true)}
+    ${row("Current Status",    fmtEnum(job.current_status))}
+    ${row("Total Cycles",      String(job.total_cycles ?? 0))}
+    ${row("First Seen",        job.first_seen_at ? fmtDate(job.first_seen_at) : null)}
+  `;
 
+  // ── Location ─────────────────────────────────────────────
+  const locationFields = `
+    ${row("Site / Position",   job.site_name_position_shift)}
+    ${row("Region",            fmtEnum(job.region))}
+    ${row("City",              fmtEnum(job.city_of_site_location))}
+    ${row("State",             (job.state_of_site_location || "").toUpperCase())}
+    ${row("Zip Code",          job.zip_code_of_site)}
+    ${row("Serviceable Zip",   job.serviceable_zip_code)}
+    ${row("Tier 1 Zip Codes",  job.tier1_zip_codes)}
+    ${row("Tier 2 Zip Codes",  job.tier2_zip_codes)}
+    ${row("Tier 3 Zip Codes",  job.tier3_zip_codes)}
+  `;
+
+  // ── Position ─────────────────────────────────────────────
+  const positionFields = `
+    ${row("Officer Type",       fmtEnum(job.officer_type))}
+    ${row("Employment Status",  fmtEnum(job.employment_status))}
+    ${row("Industry",           fmtEnum(job.industry))}
+    ${row("Position Status",    fmtEnum(job.position_status))}
+    ${row("Schedule",           job.schedule)}
+    ${row("Pay Rate",           job.advertised_pay_rate)}
+    ${row("Position Start Date",job.position_start_date)}
+    ${row("Applicant Radius",   job.applicant_radius ? job.applicant_radius + " miles" : null)}
+    ${row("Applicant Stack Status", fmtEnum(job.applicant_stack_status))}
+  `;
+
+  // ── Hiring ───────────────────────────────────────────────
+  const hiringFields = `
+    ${row("Hiring Manager",     fmtManager(job.hiring_manager))}
+    ${row("HR Approval Status", fmtEnum(job.hr_approval_status))}
+    ${row("Interview Type",     fmtEnum(job.interview_type))}
+    ${row("Interview Calendar", job.interview_calendar)}
+    ${row("In-Person Interview Address", job.in_person_interview_address)}
+  `;
+
+  // ── Screening ────────────────────────────────────────────
+  const screeningFields = `
+    ${row("Disqualifying Questions",         job.disqualifying_questions)}
+    ${row("Position Specific Requirements",  job.position_specific_requirements)}
+    ${row("Preferred Screening Questions",   job.preferred_screening_questions)}
+    ${row("Other Preferences",               job.other_preferences)}
+  `;
+
+  // ── Job Duties (full width) ──────────────────────────────
+  const dutiesBlock = (job.job_duties && job.job_duties !== "null") ? `
+    <div class="modal-section">
+      <div class="modal-section-title">Job Duties</div>
+      <div style="font-size:.85rem;color:var(--text-secondary);white-space:pre-wrap;line-height:1.7;background:var(--bg-page);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;">${esc(job.job_duties)}</div>
+    </div>` : "";
+
+  // ── Cycles ───────────────────────────────────────────────
   const cycleRows = cycles.map(c => `
     <div class="cycle-row">
       <div>
@@ -237,6 +279,7 @@ function buildDetailHTML(job, cycles, history) {
     </div>
   `).join("") || "<p style='color:var(--text-muted);font-size:.85rem'>No cycles recorded.</p>";
 
+  // ── History ──────────────────────────────────────────────
   const historyItems = history.map(h => `
     <div class="history-item">
       <div class="history-dot history-dot--${h.status}"></div>
@@ -252,9 +295,31 @@ function buildDetailHTML(job, cycles, history) {
     <div class="modal-subtitle">${esc(job.tracktik_post_id)} &nbsp;·&nbsp; ${statusBadge(job.current_status)}</div>
 
     <div class="modal-section">
-      <div class="modal-section-title">Job Details</div>
-      <div class="detail-grid">${detailItems}</div>
+      <div class="modal-section-title">Identity</div>
+      <div class="detail-grid">${identityFields}</div>
     </div>
+
+    <div class="modal-section">
+      <div class="modal-section-title">Location</div>
+      <div class="detail-grid">${locationFields}</div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-section-title">Position Details</div>
+      <div class="detail-grid">${positionFields}</div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-section-title">Hiring & Interview</div>
+      <div class="detail-grid">${hiringFields}</div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-section-title">Screening & Requirements</div>
+      <div class="detail-grid">${screeningFields}</div>
+    </div>
+
+    ${dutiesBlock}
 
     <div class="modal-section">
       <div class="modal-section-title">Hire Cycles (${cycles.length})</div>
@@ -354,14 +419,17 @@ document.getElementById("btn-apply").addEventListener("click", () => {
 });
 
 document.getElementById("btn-reset").addEventListener("click", () => {
-  ["f-tracktik","f-status","f-date-from","f-date-to","f-region","f-city","f-manager","f-officer"]
+  ["f-tracktik","f-site-id","f-status","f-date-from","f-date-to","f-region","f-city","f-manager","f-officer"]
     .forEach(id => { document.getElementById(id).value = ""; });
   currentPage = 1;
   loadDashboard();
 });
 
-// Enter key on text filter
+// Enter key on text filters
 document.getElementById("f-tracktik").addEventListener("keydown", e => {
+  if (e.key === "Enter") { currentPage = 1; loadDashboard(); }
+});
+document.getElementById("f-site-id").addEventListener("keydown", e => {
   if (e.key === "Enter") { currentPage = 1; loadDashboard(); }
 });
 

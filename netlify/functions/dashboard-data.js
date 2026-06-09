@@ -18,6 +18,7 @@ exports.handler = async (event) => {
   // ── Parse filters ─────────────────────────────────────────
   const {
     tracktik_post_id,
+    tracktik_site_id,
     status,
     region,
     city,
@@ -57,6 +58,21 @@ exports.handler = async (event) => {
           industry,
           hr_approval_status,
           tracktik_site_id,
+          zip_code_of_site,
+          interview_calendar,
+          interview_type,
+          applicant_radius,
+          applicant_stack_status,
+          disqualifying_questions,
+          position_specific_requirements,
+          preferred_screening_questions,
+          serviceable_zip_code,
+          tier1_zip_codes,
+          tier2_zip_codes,
+          tier3_zip_codes,
+          in_person_interview_address,
+          job_duties,
+          other_preferences,
           first_seen_at
         )
       `, { count: "exact" })
@@ -107,6 +123,11 @@ exports.handler = async (event) => {
         c => c.job_requisitions?.officer_type?.toLowerCase().includes(officer_type.toLowerCase())
       );
     }
+    if (tracktik_site_id) {
+      filteredCycles = filteredCycles.filter(
+        c => c.job_requisitions?.tracktik_site_id?.toLowerCase().includes(tracktik_site_id.toLowerCase())
+      );
+    }
 
     // ── Query 2: Summary stats ────────────────────────────────
     const { data: statsData } = await supabase
@@ -131,12 +152,13 @@ exports.handler = async (event) => {
     // ── Query 3: Filter options (distinct values) ─────────────
     const { data: filterOptions } = await supabase
       .from("job_requisitions")
-      .select("region, city_of_site_location, hiring_manager, officer_type, current_status");
+      .select("region, city_of_site_location, hiring_manager, officer_type, current_status, tracktik_site_id");
 
     const uniqueRegions   = [...new Set((filterOptions || []).map(r => r.region).filter(Boolean))].sort();
     const uniqueCities    = [...new Set((filterOptions || []).map(r => r.city_of_site_location).filter(Boolean))].sort();
     const uniqueManagers  = [...new Set((filterOptions || []).map(r => r.hiring_manager).filter(Boolean))].sort();
     const uniqueOfficers  = [...new Set((filterOptions || []).map(r => r.officer_type).filter(Boolean))].sort();
+    const uniqueSiteIds   = [...new Set((filterOptions || []).map(r => r.tracktik_site_id).filter(Boolean))].sort();
 
     return {
       statusCode: 200,
@@ -163,6 +185,7 @@ exports.handler = async (event) => {
           cities:           uniqueCities,
           hiring_managers:  uniqueManagers,
           officer_types:    uniqueOfficers,
+          tracktik_site_ids: uniqueSiteIds,
         },
       }),
     };
