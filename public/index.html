@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Job Requisition Dashboard</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+
+  <!-- ── HEADER ─────────────────────────────────────────── -->
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="header-brand">
+        <span class="brand-dot"></span>
+        <span class="brand-name">Requisition Intelligence</span>
+      </div>
+      <nav class="header-nav">
+        <a href="/" class="nav-link active">Dashboard</a>
+        <a href="/jobs.html" class="nav-link">All Jobs</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- ── MAIN ───────────────────────────────────────────── -->
+  <main class="main-content">
+
+    <!-- Summary Cards -->
+    <section class="summary-strip">
+      <div class="stat-card">
+        <span class="stat-label">Total Jobs</span>
+        <span class="stat-value" id="stat-total-jobs">—</span>
+      </div>
+      <div class="stat-card stat-card--open">
+        <span class="stat-label">Currently Open</span>
+        <span class="stat-value" id="stat-open-jobs">—</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Total Cycles</span>
+        <span class="stat-value" id="stat-total-cycles">—</span>
+      </div>
+      <div class="stat-card stat-card--accent">
+        <span class="stat-label">Avg Days to Hire</span>
+        <span class="stat-value" id="stat-avg-days">—</span>
+      </div>
+    </section>
+
+    <!-- Filter Bar -->
+    <section class="filter-bar">
+      <div class="filter-bar-inner">
+        <h2 class="filter-heading">Filter Records</h2>
+        <div class="filter-grid">
+
+          <div class="filter-group">
+            <label class="filter-label" for="f-tracktik">TrackTik Post ID</label>
+            <input type="text" id="f-tracktik" class="filter-input" placeholder="e.g. P00017-UAPTA" />
+          </div>
+
+          <div class="filter-group">
+            <label class="filter-label" for="f-status">Status</label>
+            <select id="f-status" class="filter-input">
+              <option value="">All Statuses</option>
+              <option value="open">Open</option>
+              <option value="closed">Closed</option>
+              <option value="created">Created</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label class="filter-label" for="f-date-from">Opened From</label>
+            <input type="date" id="f-date-from" class="filter-input" />
+          </div>
+
+          <div class="filter-group">
+            <label class="filter-label" for="f-date-to">Opened To</label>
+            <input type="date" id="f-date-to" class="filter-input" />
+          </div>
+
+          <div class="filter-group">
+            <label class="filter-label" for="f-region">Region</label>
+            <select id="f-region" class="filter-input">
+              <option value="">All Regions</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label class="filter-label" for="f-city">City</label>
+            <select id="f-city" class="filter-input">
+              <option value="">All Cities</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label class="filter-label" for="f-manager">Hiring Manager</label>
+            <select id="f-manager" class="filter-input">
+              <option value="">All Managers</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label class="filter-label" for="f-officer">Officer Type</label>
+            <select id="f-officer" class="filter-input">
+              <option value="">All Types</option>
+            </select>
+          </div>
+
+        </div>
+        <div class="filter-actions">
+          <button id="btn-apply" class="btn btn--primary">Apply Filters</button>
+          <button id="btn-reset" class="btn btn--ghost">Reset</button>
+          <span class="results-count" id="results-count"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Data Table -->
+    <section class="table-section">
+      <div class="table-wrapper">
+        <div id="table-loading" class="table-loading">
+          <div class="spinner"></div>
+          <span>Loading records…</span>
+        </div>
+        <div id="table-empty" class="table-empty hidden">
+          <span class="empty-icon">⬡</span>
+          <p>No records match your filters.</p>
+        </div>
+        <table class="data-table" id="main-table">
+          <thead>
+            <tr>
+              <th>TrackTik Post ID</th>
+              <th>Site / Position</th>
+              <th>Region</th>
+              <th>Hiring Manager</th>
+              <th>Cycle #</th>
+              <th>Opened</th>
+              <th>Closed</th>
+              <th>Days to Hire</th>
+              <th>% Time to Hire</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="table-body">
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination -->
+      <div class="pagination" id="pagination"></div>
+    </section>
+
+  </main>
+
+  <!-- ── DETAIL MODAL ────────────────────────────────────── -->
+  <div class="modal-overlay hidden" id="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal">
+      <button class="modal-close" id="modal-close" aria-label="Close">✕</button>
+      <div class="modal-content" id="modal-content">
+        <div class="spinner"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

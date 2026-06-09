@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>All Jobs — Job Requisition Dashboard</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .jobs-table td { font-size: .83rem; }
+    .cell-duties {
+      max-width: 280px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="header-brand">
+        <span class="brand-dot"></span>
+        <span class="brand-name">Requisition Intelligence</span>
+      </div>
+      <nav class="header-nav">
+        <a href="/" class="nav-link">Dashboard</a>
+        <a href="/jobs.html" class="nav-link active">All Jobs</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="main-content">
+    <section class="filter-bar">
+      <div class="filter-bar-inner">
+        <h2 class="filter-heading">Search Jobs</h2>
+        <div class="filter-grid">
+          <div class="filter-group">
+            <label class="filter-label" for="j-tracktik">TrackTik Post ID</label>
+            <input type="text" id="j-tracktik" class="filter-input" placeholder="e.g. P00017-UAPTA" />
+          </div>
+          <div class="filter-group">
+            <label class="filter-label" for="j-status">Current Status</label>
+            <select id="j-status" class="filter-input">
+              <option value="">All</option>
+              <option value="open">Open</option>
+              <option value="closed">Closed</option>
+              <option value="created">Created</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label class="filter-label" for="j-region">Region</label>
+            <select id="j-region" class="filter-input"><option value="">All Regions</option></select>
+          </div>
+          <div class="filter-group">
+            <label class="filter-label" for="j-officer">Officer Type</label>
+            <select id="j-officer" class="filter-input"><option value="">All Types</option></select>
+          </div>
+        </div>
+        <div class="filter-actions">
+          <button id="j-apply" class="btn btn--primary">Search</button>
+          <button id="j-reset" class="btn btn--ghost">Reset</button>
+          <span class="results-count" id="j-results-count"></span>
+        </div>
+      </div>
+    </section>
+
+    <section class="table-section">
+      <div class="table-wrapper">
+        <div id="j-loading" class="table-loading">
+          <div class="spinner"></div><span>Loading jobs…</span>
+        </div>
+        <div id="j-empty" class="table-empty hidden">
+          <span class="empty-icon">⬡</span><p>No jobs found.</p>
+        </div>
+        <table class="data-table jobs-table" id="jobs-table">
+          <thead>
+            <tr>
+              <th>TrackTik Post ID</th>
+              <th>Site / Position</th>
+              <th>Region</th>
+              <th>City</th>
+              <th>Officer Type</th>
+              <th>Hiring Manager</th>
+              <th>Status</th>
+              <th>Total Cycles</th>
+              <th>First Seen</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="jobs-body"></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="j-pagination"></div>
+    </section>
+  </main>
+
+  <div class="modal-overlay hidden" id="modal-overlay">
+    <div class="modal">
+      <button class="modal-close" id="modal-close">✕</button>
+      <div class="modal-content" id="modal-content"></div>
+    </div>
+  </div>
+
+  <script src="/app.js" defer></script>
+  <script>
+  // Override loadDashboard for the jobs page
+  document.addEventListener("DOMContentLoaded", () => {
+    async function loadJobs(page = 1) {
+      const loading = document.getElementById("j-loading");
+      const empty   = document.getElementById("j-empty");
+      const table   = document.getElementById("jobs-table");
+      const body    = document.getElementById("jobs-body");
+      const pag     = document.getElementById("j-pagination");
+      const count   = document.getElementById("j-results-count");
+
+      loading.classList.remove("hidden");
+      table.classList.add("hidden");
+      empty.classList.add("hidden");
+
+      const params = new URLSearchParams();
+      const tracktik = document.getElementById("j-tracktik").value.trim();
+      const status   = document.getElementById("j-status").value;
+      const region   = document.getElementById("j-region").value;
+      const officer  = document.getElementById("j-officer").value;
+      if (tracktik) params.set("tracktik_post_id", tracktik);
+      if (status)   params.set("status", status);
+      if (region)   params.set("region", region);
+      if (officer)  params.set("officer_type", officer);
+      params.set("page", page);
+      params.set("per_page", 50);
+
+      try {
+        const res  = await fetch(`/api/dashboard-data?${params}`);
+        const data = await res.json();
+
+        // Populate filter dropdowns
+        const fo = data.filter_options || {};
+        const sel = (id, arr) => {
+          const s = document.getElementById(id);
+          const existing = new Set(Array.from(s.options).map(o => o.value));
+          (arr || []).forEach(v => {
+            if (!v || existing.has(v)) return;
+            const o = document.createElement("option");
+            o.value = v; o.textContent = v.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+            s.appendChild(o);
+          });
+        };
+        sel("j-region", fo.regions);
+        sel("j-officer", fo.officer_types);
+
+        // De-dupe cycles → one row per job
+        const seen = new Map();
+        (data.cycles || []).forEach(c => {
+          const id = c.tracktik_post_id;
+          if (!seen.has(id)) seen.set(id, c);
+        });
+        const jobs = Array.from(seen.values());
+
+        loading.classList.add("hidden");
+        if (!jobs.length) { empty.classList.remove("hidden"); return; }
+
+        table.classList.remove("hidden");
+        body.innerHTML = "";
+
+        jobs.forEach(c => {
+          const j = c.job_requisitions || {};
+          const tr = document.createElement("tr");
+          const status = j.current_status || "created";
+          tr.innerHTML = `
+            <td><span class="cell-id">${c.tracktik_post_id}</span></td>
+            <td><span class="cell-site" title="${j.site_name_position_shift||""}">${j.site_name_position_shift||"—"}</span></td>
+            <td>${(j.region||"—").replace(/_/g," ")}</td>
+            <td>${(j.city_of_site_location||"—").replace(/_/g," ")}</td>
+            <td>${j.officer_type||"—"}</td>
+            <td>${(j.hiring_manager||"—").replace(/_/g," ")}</td>
+            <td><span class="badge badge--${status}">${status}</span></td>
+            <td style="text-align:center">${j.total_cycles||0}</td>
+            <td>${j.first_seen_at ? new Date(j.first_seen_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—"}</td>
+            <td><button class="btn--detail" onclick="openDetail('${c.tracktik_post_id}')">Detail</button></td>
+          `;
+          body.appendChild(tr);
+        });
+
+        const total = data.pagination?.total || 0;
+        count.textContent = total ? `${total.toLocaleString()} records` : "";
+
+      } catch(e) {
+        loading.classList.add("hidden");
+        empty.classList.remove("hidden");
+        console.error(e);
+      }
+    }
+
+    loadJobs();
+    document.getElementById("j-apply").onclick = () => loadJobs(1);
+    document.getElementById("j-reset").onclick = () => {
+      ["j-tracktik","j-status","j-region","j-officer"].forEach(id => document.getElementById(id).value = "");
+      loadJobs(1);
+    };
+  });
+  </script>
+</body>
+</html>
