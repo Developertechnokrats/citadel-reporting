@@ -122,29 +122,42 @@ exports.handler = async (event) => {
     let cycleNumber = null;
 
     if (incomingStatus === "open") {
-      // Always start a new cycle when opened
-      const newCycleNumber = (existingJob?.total_cycles || 0) + 1;
-      cycleNumber = newCycleNumber;
-
-      // Insert new cycle row
-      const { error: cycleInsertErr } = await supabase
+      // Check if there is already an open (unclosed) cycle — avoid duplicates
+      const { data: alreadyOpen } = await supabase
         .from("job_cycles")
-        .insert({
-          tracktik_post_id: tracktikPostId,
-          cycle_number: cycleNumber,
-          opened_at: now,
-          is_open: true,
-        });
+        .select("cycle_number")
+        .eq("tracktik_post_id", tracktikPostId)
+        .eq("is_open", true)
+        .limit(1)
+        .maybeSingle();
 
-      if (cycleInsertErr) throw new Error(`Insert job_cycles: ${cycleInsertErr.message}`);
+      if (alreadyOpen) {
+        // Cycle already open — reuse it, do not create a duplicate
+        cycleNumber = alreadyOpen.cycle_number;
+        console.log(`[DB] Cycle ${cycleNumber} already open for ${tracktikPostId} — skipping new cycle creation`);
+      } else {
+        // No open cycle exists — create a fresh one
+        const newCycleNumber = (existingJob?.total_cycles || 0) + 1;
+        cycleNumber = newCycleNumber;
 
-      // Update total_cycles on the master record
-      await supabase
-        .from("job_requisitions")
-        .update({ total_cycles: newCycleNumber })
-        .eq("tracktik_post_id", tracktikPostId);
+        const { error: cycleInsertErr } = await supabase
+          .from("job_cycles")
+          .insert({
+            tracktik_post_id: tracktikPostId,
+            cycle_number: cycleNumber,
+            opened_at: now,
+            is_open: true,
+          });
 
-      console.log(`[DB] Opened cycle ${cycleNumber} for ${tracktikPostId}`);
+        if (cycleInsertErr) throw new Error(`Insert job_cycles: ${cycleInsertErr.message}`);
+
+        await supabase
+          .from("job_requisitions")
+          .update({ total_cycles: newCycleNumber })
+          .eq("tracktik_post_id", tracktikPostId);
+
+        console.log(`[DB] Opened new cycle ${cycleNumber} for ${tracktikPostId}`);
+      }
 
     } else if (incomingStatus === "closed") {
       // Find the latest open (unclosed) cycle
