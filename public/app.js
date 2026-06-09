@@ -249,7 +249,7 @@ function buildDetailHTML(job, cycles, history) {
   const dutiesBlock = (job.job_duties && job.job_duties !== "null") ? `
     <div class="modal-section">
       <div class="modal-section-title">Job Duties</div>
-      <div style="font-size:.85rem;color:var(--text-secondary);white-space:pre-wrap;line-height:1.7;background:var(--bg-page);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;">${esc(job.job_duties)}</div>
+      <div class="duties-block">${esc(job.job_duties)}</div>
     </div>` : "";
 
   // ── Cycles ───────────────────────────────────────────────
@@ -374,8 +374,8 @@ function statusBadge(status) {
 }
 
 function statusColor(status) {
-  const map = { open: "var(--status-open)", closed: "var(--status-closed)", created: "var(--status-created)" };
-  return map[status] || "var(--text-secondary)";
+  const map = { open: "#2E7D32", closed: "#C62828", created: "#B8860B" };
+  return map[status] || "#555555";
 }
 
 function pctBar(pct) {
