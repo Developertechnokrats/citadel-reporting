@@ -7,7 +7,8 @@
     "build": "echo 'No build step required'"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.39.0"
+    "@supabase/supabase-js": "^2.39.0",
+    "csv-parse": "^5.5.5"
   },
   "devDependencies": {
     "netlify-cli": "^17.0.0"

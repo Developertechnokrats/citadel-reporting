@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Region Report — Job Requisition Dashboard</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .region-summary {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+    .region-table td { font-size: .83rem; }
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 50px 24px;
+      color: var(--text-muted);
+      font-size: .9rem;
+      text-align: center;
+    }
+    @media (max-width: 900px) {
+      .region-summary { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="header-brand"></div>
+      <nav class="header-nav">
+        <a href="/" class="nav-link">Dashboard</a>
+        <a href="/jobs.html" class="nav-link">All Jobs</a>
+        <a href="/region-report.html" class="nav-link active">Region Report</a>
+        <a href="/import.html" class="nav-link">Import Data</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="main-content">
+    <section class="filter-bar">
+      <div class="filter-bar-inner">
+        <h2 class="filter-heading">Region Time-to-Hire Report</h2>
+        <div class="filter-grid">
+          <div class="filter-group">
+            <label class="filter-label" for="r-region">Region</label>
+            <select id="r-region" class="filter-input">
+              <option value="">Select a region…</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label class="filter-label" for="r-date-from">Open Date From</label>
+            <input type="date" id="r-date-from" class="filter-input" />
+          </div>
+          <div class="filter-group">
+            <label class="filter-label" for="r-date-to">Close Date To</label>
+            <input type="date" id="r-date-to" class="filter-input" />
+          </div>
+        </div>
+        <div class="filter-actions">
+          <button id="r-generate" class="btn btn--primary">Generate Report</button>
+          <button id="r-reset" class="btn btn--ghost">Reset</button>
+        </div>
+        <p style="margin-top:12px;font-size:.78rem;color:var(--text-muted);">
+          Shows hire cycles where <strong>both</strong> the Open date and the Close date fall
+          within the selected range.
+        </p>
+      </div>
+    </section>
+
+    <section class="region-summary" id="r-summary" style="display:none;">
+      <div class="stat-card">
+        <span class="stat-label">Cycles in Range</span>
+        <span class="stat-value" id="r-stat-count">—</span>
+      </div>
+      <div class="stat-card stat-card--accent">
+        <span class="stat-label">Avg Days to Hire</span>
+        <span class="stat-value" id="r-stat-avg-days">—</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Accumulated Days</span>
+        <span class="stat-value" id="r-stat-total-days">—</span>
+      </div>
+      <div class="stat-card stat-card--accent">
+        <span class="stat-label">Avg % Time to Hire</span>
+        <span class="stat-value" id="r-stat-avg-pct">—</span>
+      </div>
+    </section>
+
+    <section class="table-section">
+      <div class="table-wrapper">
+        <div id="r-empty" class="empty-state">
+          <span class="empty-icon">⬡</span>
+          <p>Select a region and date range, then click <strong>Generate Report</strong>.</p>
+        </div>
+        <table class="data-table region-table hidden" id="r-table">
+          <thead>
+            <tr>
+              <th>TrackTik Post ID</th>
+              <th>Site / Position</th>
+              <th>Hiring Manager</th>
+              <th>Cycle #</th>
+              <th>Opened</th>
+              <th>Closed</th>
+              <th>Days to Hire</th>
+              <th>% Time to Hire</th>
+            </tr>
+          </thead>
+          <tbody id="r-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // Inject logo same way as other pages — copy from index.html at runtime
+    fetch('/index.html')
+      .then(r => r.text())
+      .then(html => {
+        const m = html.match(/<div class="header-brand">[\s\S]*?<\/div>/);
+        if (m) document.querySelector('.header-brand').outerHTML = m[0];
+      });
+  </script>
+
+  <script>
+    const fmtMoney = v => v == null ? "—" : v;
+
+    function fmtDate(iso) {
+      if (!iso) return "—";
+      return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    }
+    function fmtEnum(val) {
+      if (!val) return "";
+      return val.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+    }
+    function esc(str) {
+      if (str == null) return "";
+      return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    }
+
+    // Populate region dropdown from dashboard-data filter options
+    async function loadRegions() {
+      try {
+        const res = await fetch('/api/dashboard-data?per_page=1');
+        const data = await res.json();
+        const sel = document.getElementById('r-region');
+        (data.filter_options?.regions || []).forEach(r => {
+          const opt = document.createElement('option');
+          opt.value = r;
+          opt.textContent = fmtEnum(r);
+          sel.appendChild(opt);
+        });
+      } catch (e) { console.error(e); }
+    }
+    loadRegions();
+
+    async function generateReport() {
+      const region = document.getElementById('r-region').value;
+      const dateFrom = document.getElementById('r-date-from').value;
+      const dateTo = document.getElementById('r-date-to').value;
+
+      const empty = document.getElementById('r-empty');
+      const table = document.getElementById('r-table');
+      const body  = document.getElementById('r-body');
+      const summary = document.getElementById('r-summary');
+
+      if (!region || !dateFrom || !dateTo) {
+        empty.innerHTML = `<span class="empty-icon">⚠</span><p>Please select a region and both dates.</p>`;
+        empty.classList.remove('hidden');
+        table.classList.add('hidden');
+        summary.style.display = 'none';
+        return;
+      }
+
+      empty.innerHTML = `<div class="spinner"></div><span style="margin-top:10px">Generating report…</span>`;
+      empty.classList.remove('hidden');
+      table.classList.add('hidden');
+
+      try {
+        const params = new URLSearchParams({ region, date_from: dateFrom, date_to: dateTo });
+        const res = await fetch(`/api/region-report?${params}`);
+        const data = await res.json();
+
+        if (!data.cycles || !data.cycles.length) {
+          empty.innerHTML = `<span class="empty-icon">⬡</span><p>No completed hire cycles found for <strong>${fmtEnum(region)}</strong> between ${dateFrom} and ${dateTo}.</p>`;
+          empty.classList.remove('hidden');
+          table.classList.add('hidden');
+          summary.style.display = 'none';
+          return;
+        }
+
+        // Summary
+        document.getElementById('r-stat-count').textContent = data.summary.total_cycles;
+        document.getElementById('r-stat-avg-days').textContent = data.summary.avg_days_to_hire.toFixed(1) + 'd';
+        document.getElementById('r-stat-total-days').textContent = data.summary.accumulated_days.toFixed(1) + 'd';
+        document.getElementById('r-stat-avg-pct').textContent = data.summary.avg_pct_time_to_hire.toFixed(1) + '%';
+        summary.style.display = 'grid';
+
+        // Table
+        body.innerHTML = '';
+        data.cycles.forEach(c => {
+          const j = c.job_requisitions || {};
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td><span class="cell-id">${esc(c.tracktik_post_id || j.tracktik_post_id)}</span></td>
+            <td><span class="cell-site" title="${esc(j.site_name_position_shift||'')}">${esc(j.site_name_position_shift || '—')}</span></td>
+            <td>${esc((j.hiring_manager||'—').replace(/_/g,' '))}</td>
+            <td class="cell-cycle">${c.cycle_number}</td>
+            <td>${fmtDate(c.opened_at)}</td>
+            <td>${fmtDate(c.closed_at)}</td>
+            <td class="cell-days">${Number(c.days_to_hire).toFixed(1)}d</td>
+            <td class="cell-pct">${Number(c.pct_time_to_hire).toFixed(1)}%</td>
+          `;
+          body.appendChild(tr);
+        });
+
+        empty.classList.add('hidden');
+        table.classList.remove('hidden');
+
+      } catch (e) {
+        console.error(e);
+        empty.innerHTML = `<span class="empty-icon">⚠</span><p>Failed to generate report.</p>`;
+        empty.classList.remove('hidden');
+        table.classList.add('hidden');
+        summary.style.display = 'none';
+      }
+    }
+
+    document.getElementById('r-generate').addEventListener('click', generateReport);
+    document.getElementById('r-reset').addEventListener('click', () => {
+      document.getElementById('r-region').value = '';
+      document.getElementById('r-date-from').value = '';
+      document.getElementById('r-date-to').value = '';
+      document.getElementById('r-summary').style.display = 'none';
+      document.getElementById('r-table').classList.add('hidden');
+      const empty = document.getElementById('r-empty');
+      empty.innerHTML = `<span class="empty-icon">⬡</span><p>Select a region and date range, then click <strong>Generate Report</strong>.</p>`;
+      empty.classList.remove('hidden');
+    });
+  </script>
+</body>
+</html>

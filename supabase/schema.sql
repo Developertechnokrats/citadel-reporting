@@ -169,6 +169,33 @@ CREATE POLICY "anon_read_job_cycles"
   TO anon USING (true);
 
 -- ============================================================
+-- TABLE 4: import_batches
+-- Tracks every CSV import for audit + undo capability
+-- ============================================================
+CREATE TABLE IF NOT EXISTS import_batches (
+  id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  filename      TEXT,
+  imported_at   TIMESTAMPTZ DEFAULT NOW(),
+  total_jobs    INT,
+  total_cycles  INT,
+  status        TEXT DEFAULT 'completed',  -- completed | reverted
+  snapshot      JSONB                      -- pre-import state, for undo
+);
+
+CREATE INDEX IF NOT EXISTS idx_import_batches_status ON import_batches(status);
+CREATE INDEX IF NOT EXISTS idx_import_batches_date   ON import_batches(imported_at);
+
+ALTER TABLE import_batches ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "service_role_all_import_batches"
+  ON import_batches FOR ALL
+  TO service_role USING (true) WITH CHECK (true);
+
+CREATE POLICY "anon_read_import_batches"
+  ON import_batches FOR SELECT
+  TO anon USING (true);
+
+-- ============================================================
 -- Done! Verify with:
 -- SELECT table_name FROM information_schema.tables WHERE table_schema = 'public';
 -- ============================================================

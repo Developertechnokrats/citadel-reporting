@@ -209,6 +209,7 @@ exports.handler = async (event) => {
     }
 
     // ── STEP 4: Log to job_status_history ────────────────────
+    // Every webhook hit is recorded — this is the full audit trail
     const historyStatus = isNewJob && !incomingStatus ? "created" : (incomingStatus || "created");
 
     const { error: histErr } = await supabase

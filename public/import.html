@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Import Data — Job Requisition Dashboard</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .import-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-card);
+      padding: 24px;
+    }
+    .import-card h2 {
+      font-size: .9rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+    }
+    .import-card p.desc {
+      font-size: .82rem;
+      color: var(--text-muted);
+      margin-bottom: 18px;
+      line-height: 1.6;
+    }
+    .dropzone {
+      border: 2px dashed var(--border-mid);
+      border-radius: var(--radius-md);
+      padding: 36px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+      display: block;
+    }
+    .dropzone:hover, .dropzone.dragover {
+      border-color: var(--gold);
+      background: var(--gold-faint);
+    }
+    .dropzone input { display: none; }
+    .dropzone .icon { font-size: 2.2rem; color: var(--text-muted); margin-bottom: 8px; }
+    .dropzone .main-text { font-size: .9rem; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+    .dropzone .sub-text { font-size: .78rem; color: var(--text-muted); }
+    .file-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg-card-2);
+      border: 1px solid var(--border-mid);
+      border-radius: 20px;
+      padding: 6px 14px;
+      font-size: .8rem;
+      color: var(--text-primary);
+      margin-top: 14px;
+    }
+    .file-chip .remove {
+      cursor: pointer;
+      color: var(--text-muted);
+      font-weight: 700;
+    }
+    .file-chip .remove:hover { color: var(--status-closed); }
+
+    .import-actions { margin-top: 18px; display: flex; gap: 10px; align-items: center; }
+    .import-result {
+      margin-top: 20px;
+      padding: 16px 18px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg-card-2);
+      font-size: .85rem;
+    }
+    .import-result.success { border-left: 3px solid var(--status-open); }
+    .import-result.error   { border-left: 3px solid var(--status-closed); color: var(--status-closed); }
+
+    .result-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .result-stat { text-align: center; }
+    .result-stat .num { font-size: 1.5rem; font-weight: 700; color: var(--text-primary); }
+    .result-stat .lbl { font-size: .68rem; text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted); margin-top: 2px; }
+
+    .undo-section { margin-top: 20px; }
+    .undo-info {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding: 14px 18px;
+      background: var(--bg-card-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+    .undo-info .meta { font-size: .82rem; color: var(--text-secondary); }
+    .undo-info .meta strong { color: var(--text-primary); }
+    .btn--danger {
+      background: var(--status-closed-bg);
+      color: var(--status-closed);
+      border: 1px solid var(--status-closed);
+    }
+    .btn--danger:hover { opacity: .85; }
+    .progress-text { font-size: .82rem; color: var(--text-muted); margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="header-brand"></div>
+      <nav class="header-nav">
+        <a href="/" class="nav-link">Dashboard</a>
+        <a href="/jobs.html" class="nav-link">All Jobs</a>
+        <a href="/region-report.html" class="nav-link">Region Report</a>
+        <a href="/import.html" class="nav-link active">Import Data</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="main-content" style="max-width: 760px;">
+
+    <section class="import-card">
+      <h2>Import Historical Data from ApplicantStack</h2>
+      <p class="desc">
+        Upload the CSV report exported from ApplicantStack. Each job's open/close
+        cycles are detected automatically — Indeed reposts are ignored, "Position Filled"
+        closes a hire cycle, and "Withdrawn" only closes a cycle if it's the last
+        thing that happened to that posting.
+      </p>
+
+      <label class="dropzone" id="dropzone" for="csv-file">
+        <div class="icon">&#8593;</div>
+        <div class="main-text">Click to choose a CSV file, or drag it here</div>
+        <div class="sub-text">Exported report from ApplicantStack (.csv)</div>
+        <input type="file" id="csv-file" accept=".csv" />
+      </label>
+
+      <div id="file-chip-wrap"></div>
+
+      <div class="import-actions">
+        <button class="btn btn--primary" id="btn-import" disabled>Import CSV</button>
+        <span class="progress-text" id="progress-text"></span>
+      </div>
+
+      <div id="import-result"></div>
+    </section>
+
+    <section class="import-card undo-section">
+      <h2>Undo Last Import</h2>
+      <p class="desc">
+        If an import created or changed data you didn't expect, you can fully
+        revert the most recent import. Jobs that were brand-new will be deleted;
+        jobs that already existed will be restored to exactly how they were
+        before the import ran.
+      </p>
+      <div id="undo-wrap">
+        <div class="progress-text">Loading last import info&hellip;</div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    fetch('/index.html')
+      .then(function(r){ return r.text(); })
+      .then(function(html){
+        var m = html.match(/<div class="header-brand">[\s\S]*?<\/div>/);
+        if (m) {
+          document.querySelectorAll('.header-brand').forEach(function(el){ el.outerHTML = m[0]; });
+        }
+      });
+  </script>
+
+  <script>
+    var fileInput   = document.getElementById('csv-file');
+    var dropzone    = document.getElementById('dropzone');
+    var chipWrap    = document.getElementById('file-chip-wrap');
+    var btnImport   = document.getElementById('btn-import');
+    var progressTxt = document.getElementById('progress-text');
+    var resultBox   = document.getElementById('import-result');
+    var undoWrap    = document.getElementById('undo-wrap');
+
+    var selectedFile = null;
+
+    function esc(str) {
+      return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    }
+
+    function setFile(file) {
+      if (!file) return;
+      if (!file.name.toLowerCase().endsWith('.csv')) {
+        alert('Please select a .csv file');
+        return;
+      }
+      selectedFile = file;
+      chipWrap.innerHTML =
+        '<div class="file-chip">' +
+          '<span>' + esc(file.name) + '</span>' +
+          '<span class="remove" id="remove-file">&times;</span>' +
+        '</div>';
+      document.getElementById('remove-file').onclick = function(e) {
+        e.preventDefault();
+        selectedFile = null;
+        chipWrap.innerHTML = '';
+        fileInput.value = '';
+        btnImport.disabled = true;
+      };
+      btnImport.disabled = false;
+      resultBox.innerHTML = '';
+    }
+
+    fileInput.addEventListener('change', function(e){ setFile(e.target.files[0]); });
+
+    ['dragenter','dragover'].forEach(function(evt){
+      dropzone.addEventListener(evt, function(e){ e.preventDefault(); dropzone.classList.add('dragover'); });
+    });
+    ['dragleave','drop'].forEach(function(evt){
+      dropzone.addEventListener(evt, function(e){ e.preventDefault(); dropzone.classList.remove('dragover'); });
+    });
+    dropzone.addEventListener('drop', function(e){
+      var file = e.dataTransfer.files[0];
+      setFile(file);
+    });
+
+    btnImport.addEventListener('click', async function() {
+      if (!selectedFile) return;
+      btnImport.disabled = true;
+      progressTxt.textContent = 'Reading file...';
+      resultBox.innerHTML = '';
+
+      try {
+        var text = await selectedFile.text();
+        progressTxt.textContent = 'Uploading and processing... this can take up to a minute for large files.';
+
+        var res = await fetch('/api/import-csv', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename: selectedFile.name, csv: text }),
+        });
+
+        var data = await res.json();
+        progressTxt.textContent = '';
+
+        if (!res.ok) {
+          resultBox.innerHTML =
+            '<div class="import-result error"><strong>Import failed:</strong> ' + esc(data.error || 'Unknown error') + '</div>';
+          btnImport.disabled = false;
+          return;
+        }
+
+        resultBox.innerHTML =
+          '<div class="import-result success">' +
+            '<strong>Import complete</strong> — ' + data.csv_rows + ' CSV rows processed into ' + data.jobs_processed + ' jobs.' +
+            '<div class="result-grid">' +
+              '<div class="result-stat"><div class="num">' + data.new_jobs + '</div><div class="lbl">New Jobs</div></div>' +
+              '<div class="result-stat"><div class="num">' + data.updated_jobs + '</div><div class="lbl">Updated Jobs</div></div>' +
+              '<div class="result-stat"><div class="num">' + data.total_cycles + '</div><div class="lbl">Total Cycles</div></div>' +
+              '<div class="result-stat"><div class="num">' + data.filled_cycles + '</div><div class="lbl">Filled</div></div>' +
+              '<div class="result-stat"><div class="num">' + data.withdrawn_cycles + '</div><div class="lbl">Withdrawn</div></div>' +
+              '<div class="result-stat"><div class="num">' + data.still_open_cycles + '</div><div class="lbl">Still Open</div></div>' +
+            '</div>' +
+          '</div>';
+
+        selectedFile = null;
+        chipWrap.innerHTML = '';
+        fileInput.value = '';
+        btnImport.disabled = true;
+
+        loadUndoInfo();
+
+      } catch (err) {
+        progressTxt.textContent = '';
+        resultBox.innerHTML = '<div class="import-result error"><strong>Import failed:</strong> ' + esc(err.message) + '</div>';
+        btnImport.disabled = false;
+      }
+    });
+
+    function fmtDateTime(iso) {
+      return new Date(iso).toLocaleString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    }
+
+    async function loadUndoInfo() {
+      undoWrap.innerHTML = '<div class="progress-text">Loading last import info&hellip;</div>';
+      try {
+        var res = await fetch('/api/undo-import');
+        var data = await res.json();
+
+        if (!data.batch) {
+          undoWrap.innerHTML = '<p class="desc" style="margin:0">No imports have been run yet.</p>';
+          return;
+        }
+
+        var b = data.batch;
+        undoWrap.innerHTML =
+          '<div class="undo-info">' +
+            '<div class="meta">' +
+              'Last import: <strong>' + esc(b.filename) + '</strong><br>' +
+              fmtDateTime(b.imported_at) + ' \u2014 ' + b.total_jobs + ' jobs, ' + b.total_cycles + ' cycles' +
+            '</div>' +
+            '<button class="btn btn--danger" id="btn-undo">Undo This Import</button>' +
+          '</div>';
+
+        document.getElementById('btn-undo').addEventListener('click', async function() {
+          if (!confirm('This will fully revert the import "' + b.filename + '" (' + b.total_jobs + ' jobs). This cannot be undone again. Continue?')) return;
+
+          var btn = document.getElementById('btn-undo');
+          btn.disabled = true;
+          btn.textContent = 'Reverting...';
+
+          try {
+            var res2 = await fetch('/api/undo-import', { method: 'POST' });
+            var result = await res2.json();
+            if (!res2.ok) throw new Error(result.error || 'Undo failed');
+
+            undoWrap.innerHTML =
+              '<div class="import-result success">' +
+                '<strong>Reverted</strong> \u2014 deleted ' + result.deleted_new_jobs + ' new job(s), ' +
+                'restored ' + result.restored_jobs + ' existing job(s) to their previous state.' +
+              '</div>';
+          } catch (err) {
+            alert('Undo failed: ' + err.message);
+            btn.disabled = false;
+            btn.textContent = 'Undo This Import';
+          }
+        });
+
+      } catch (err) {
+        undoWrap.innerHTML = '<p class="desc" style="margin:0;color:var(--status-closed)">Failed to load: ' + esc(err.message) + '</p>';
+      }
+    }
+
+    loadUndoInfo();
+  </script>
+</body>
+</html>
