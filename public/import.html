@@ -113,6 +113,7 @@
       <nav class="header-nav">
         <a href="/" class="nav-link">Dashboard</a>
         <a href="/jobs.html" class="nav-link">All Jobs</a>
+        <a href="/reports.html" class="nav-link">Reports</a>
         <a href="/region-report.html" class="nav-link">Region Report</a>
         <a href="/import.html" class="nav-link active">Import Data</a>
       </nav>
@@ -250,17 +251,24 @@
           return;
         }
 
+        var reviewNote = data.needs_review > 0
+          ? '<div style="margin-top:10px;padding:8px 12px;background:#FEF3C7;border:1px solid #FDE68A;border-radius:4px;font-size:.8rem;color:#92400E;">' +
+              '<strong>⚠ ' + data.needs_review + ' job(s) flagged for review</strong> — check Dashboard for jobs with a review badge.' +
+            '</div>'
+          : '';
+
         resultBox.innerHTML =
           '<div class="import-result success">' +
-            '<strong>Import complete</strong> — ' + data.csv_rows + ' CSV rows processed into ' + data.jobs_processed + ' jobs.' +
+            '<strong>Import complete</strong> — ' + data.csv_rows + ' CSV rows → ' + data.jobs_processed + ' jobs.' +
             '<div class="result-grid">' +
               '<div class="result-stat"><div class="num">' + data.new_jobs + '</div><div class="lbl">New Jobs</div></div>' +
-              '<div class="result-stat"><div class="num">' + data.updated_jobs + '</div><div class="lbl">Updated Jobs</div></div>' +
-              '<div class="result-stat"><div class="num">' + data.total_cycles + '</div><div class="lbl">Total Cycles</div></div>' +
+              '<div class="result-stat"><div class="num">' + data.existing_jobs + '</div><div class="lbl">Existing Jobs</div></div>' +
+              '<div class="result-stat"><div class="num">' + data.new_cycles + '</div><div class="lbl">New Cycles</div></div>' +
+              '<div class="result-stat"><div class="num">' + data.skipped_cycles + '</div><div class="lbl">Skipped (GHL)</div></div>' +
               '<div class="result-stat"><div class="num">' + data.filled_cycles + '</div><div class="lbl">Filled</div></div>' +
-              '<div class="result-stat"><div class="num">' + data.withdrawn_cycles + '</div><div class="lbl">Withdrawn</div></div>' +
               '<div class="result-stat"><div class="num">' + data.still_open_cycles + '</div><div class="lbl">Still Open</div></div>' +
             '</div>' +
+            reviewNote +
           '</div>';
 
         selectedFile = null;
