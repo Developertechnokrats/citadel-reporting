@@ -52,7 +52,7 @@ exports.handler = async (event) => {
               tracktik_post_id, site_name_position_shift,
               region, city_of_site_location, hiring_manager,
               officer_type, current_status, total_cycles,
-              tracktik_site_id, needs_review
+              tracktik_site_id
             )
           `, { count: "exact" })
           .order("opened_at", { ascending: false })
