@@ -187,7 +187,7 @@ exports.handler = async (event) => {
       .from("job_status_history")
       .delete()
       .in("tracktik_post_id", postIds)
-      .filter("raw_payload->source", "eq", "csv_import");
+      .filter("raw_payload->>source", "eq", "csv_import");
 
     // ── Step 2: Process each job ──────────────────────────
     const jobUpserts     = [];
