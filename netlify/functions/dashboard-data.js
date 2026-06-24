@@ -1,5 +1,5 @@
 // netlify/functions/dashboard-data.js
-// Optimised: parallel queries, lightweight field selection for table view
+// Uses two simple queries + JS join instead of unstable PostgREST !inner joins
 
 const { createClient } = require("@supabase/supabase-js");
 
@@ -23,86 +23,101 @@ exports.handler = async (event) => {
 
   const pageNum = Math.max(1, parseInt(page));
   const limit   = Math.min(100, Math.max(1, parseInt(per_page)));
-  const offset  = (pageNum - 1) * limit;
-
-  function applyFilters(query) {
-    if (tracktik_post_id) query = query.ilike("tracktik_post_id", `%${tracktik_post_id.trim()}%`);
-    if (date_from)        query = query.gte("opened_at", new Date(date_from).toISOString());
-    if (date_to)          { const e = new Date(date_to); e.setHours(23,59,59,999); query = query.lte("opened_at", e.toISOString()); }
-    if (status)           query = query.eq("job_requisitions.current_status", status.toLowerCase());
-    if (region)           query = query.ilike("job_requisitions.region", `%${region}%`);
-    if (city)             query = query.ilike("job_requisitions.city_of_site_location", `%${city}%`);
-    if (hiring_manager)   query = query.ilike("job_requisitions.hiring_manager", `%${hiring_manager}%`);
-    if (officer_type)     query = query.ilike("job_requisitions.officer_type", `%${officer_type}%`);
-    if (tracktik_site_id) query = query.ilike("job_requisitions.tracktik_site_id", `%${tracktik_site_id}%`);
-    return query;
-  }
 
   try {
-    // Run all 3 queries in parallel for speed
-    const [cycleResult, statsResult, filterResult] = await Promise.all([
+    // ── Query 1: All job_requisitions (lightweight) ──────────
+    let jobQuery = supabase
+      .from("job_requisitions")
+      .select(`
+        tracktik_post_id, site_name_position_shift, region,
+        city_of_site_location, hiring_manager, officer_type,
+        current_status, total_cycles, tracktik_site_id,
+        ghl_id, advertised_pay_rate, first_seen_at
+      `);
 
-      // Query 1: paginated cycles — lightweight fields only for table display
-      applyFilters(
-        supabase.from("job_cycles")
-          .select(`
-            id, tracktik_post_id, cycle_number,
-            opened_at, closed_at, days_to_hire, pct_time_to_hire, is_open,
-            job_requisitions!inner (
-              tracktik_post_id, site_name_position_shift,
-              region, city_of_site_location, hiring_manager,
-              officer_type, current_status, total_cycles,
-              tracktik_site_id
-            )
-          `, { count: "exact" })
-          .order("opened_at", { ascending: false })
-          .range(offset, offset + limit - 1)
-      ),
+    // Apply job-level filters
+    if (status)         jobQuery = jobQuery.eq("current_status", status.toLowerCase());
+    if (region)         jobQuery = jobQuery.ilike("region", `%${region}%`);
+    if (city)           jobQuery = jobQuery.ilike("city_of_site_location", `%${city}%`);
+    if (hiring_manager) jobQuery = jobQuery.ilike("hiring_manager", `%${hiring_manager}%`);
+    if (officer_type)   jobQuery = jobQuery.ilike("officer_type", `%${officer_type}%`);
+    if (tracktik_site_id) jobQuery = jobQuery.ilike("tracktik_site_id", `%${tracktik_site_id}%`);
 
-      // Query 2: stats — minimal fields
-      applyFilters(
-        supabase.from("job_cycles")
-          .select("days_to_hire, job_requisitions!inner ( tracktik_post_id, current_status )")
-      ),
+    // ── Query 2: All job_cycles ───────────────────────────────
+    let cycleQuery = supabase
+      .from("job_cycles")
+      .select("id, tracktik_post_id, cycle_number, opened_at, closed_at, days_to_hire, pct_time_to_hire, is_open")
+      .order("opened_at", { ascending: false });
 
-      // Query 3: filter options — always global (no filters applied)
-      supabase.from("job_requisitions")
-        .select("region, city_of_site_location, hiring_manager, officer_type, current_status, tracktik_site_id"),
-    ]);
-
-    if (cycleResult.error)  throw new Error(`Cycles: ${cycleResult.error.message}`);
-    if (statsResult.error)  throw new Error(`Stats: ${statsResult.error.message}`);
-
-    const cycles        = cycleResult.data  || [];
-    const totalCount    = cycleResult.count || 0;
-    const statsCycles   = statsResult.data  || [];
-    const filterOptions = filterResult.data || [];
-
-    // Summary stats
-    const filledCycles  = statsCycles.filter(c => c.days_to_hire !== null);
-    const avgDaysToHire = filledCycles.length > 0
-      ? parseFloat((filledCycles.reduce((s,c) => s + parseFloat(c.days_to_hire||0), 0) / filledCycles.length).toFixed(1))
-      : 0;
-
-    const jobMap = new Map();
-    for (const c of statsCycles) {
-      const j = c.job_requisitions;
-      if (j && !jobMap.has(j.tracktik_post_id)) jobMap.set(j.tracktik_post_id, j);
+    // Apply cycle-level filters
+    if (tracktik_post_id) cycleQuery = cycleQuery.ilike("tracktik_post_id", `%${tracktik_post_id.trim()}%`);
+    if (date_from) cycleQuery = cycleQuery.gte("opened_at", new Date(date_from).toISOString());
+    if (date_to) {
+      const e = new Date(date_to); e.setHours(23,59,59,999);
+      cycleQuery = cycleQuery.lte("opened_at", e.toISOString());
     }
 
-    // Filter options
-    const unique = (key) => [...new Set(filterOptions.map(r => r[key]).filter(Boolean))].sort();
+    // ── Query 3: Filter options ───────────────────────────────
+    const filterQuery = supabase
+      .from("job_requisitions")
+      .select("region, city_of_site_location, hiring_manager, officer_type, tracktik_site_id");
+
+    // Run all 3 in parallel
+    const [jobResult, cycleResult, filterResult] = await Promise.all([
+      jobQuery, cycleQuery, filterQuery
+    ]);
+
+    if (jobResult.error)   throw new Error(`Jobs: ${jobResult.error.message}`);
+    if (cycleResult.error) throw new Error(`Cycles: ${cycleResult.error.message}`);
+
+    // ── Join in JavaScript ────────────────────────────────────
+    const jobMap = new Map((jobResult.data || []).map(j => [j.tracktik_post_id, j]));
+
+    // Filter cycles to only those whose job matches job-level filters
+    const allCycles = (cycleResult.data || []).filter(c => jobMap.has(c.tracktik_post_id));
+
+    // Paginate
+    const total        = allCycles.length;
+    const pagedCycles  = allCycles.slice((pageNum - 1) * limit, (pageNum - 1) * limit + limit);
+
+    // Attach job details to each cycle
+    const shapedCycles = pagedCycles.map(c => ({
+      ...c,
+      is_open: !!c.is_open,
+      job_requisitions: jobMap.get(c.tracktik_post_id) || {},
+    }));
+
+    // ── Summary stats ─────────────────────────────────────────
+    const filledDays = allCycles
+      .filter(c => c.days_to_hire !== null)
+      .map(c => parseFloat(c.days_to_hire));
+
+    const avgDaysToHire = filledDays.length > 0
+      ? parseFloat((filledDays.reduce((a,b) => a+b, 0) / filledDays.length).toFixed(1))
+      : 0;
+
+    // Unique jobs in the filtered result
+    const filteredJobIds = new Set(allCycles.map(c => c.tracktik_post_id));
+    const filteredJobs   = [...filteredJobIds].map(id => jobMap.get(id)).filter(Boolean);
+    const openJobs       = filteredJobs.filter(j => j.current_status === "open").length;
+
+    // ── Filter options ────────────────────────────────────────
+    const fo     = filterResult.data || [];
+    const unique = (key) => [...new Set(fo.map(r => r[key]).filter(Boolean))].sort();
 
     return {
       statusCode: 200,
       headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
       body: JSON.stringify({
-        cycles,
-        pagination: { page: pageNum, per_page: limit, total: totalCount, total_pages: Math.ceil(totalCount / limit) },
+        cycles: shapedCycles,
+        pagination: {
+          page: pageNum, per_page: limit,
+          total, total_pages: Math.ceil(total / limit),
+        },
         summary: {
-          total_jobs:       jobMap.size,
-          open_jobs:        [...jobMap.values()].filter(j => j.current_status === "open").length,
-          total_cycles:     statsCycles.length,
+          total_jobs:       filteredJobIds.size,
+          open_jobs:        openJobs,
+          total_cycles:     total,
           avg_days_to_hire: avgDaysToHire,
         },
         filter_options: {
