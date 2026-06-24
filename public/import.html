@@ -287,17 +287,16 @@
         setProgress(10, false);
         await new Promise(function(r){ setTimeout(r, 100); }); // let UI update
 
-        var formData = new FormData();
-        formData.append('file', selectedFile, selectedFile.name);
-        stepDone('step-read', 'File read (' + (selectedFile.size/1024).toFixed(0) + ' KB)');
+        // Read file as plain text
+        var csvText = await selectedFile.text();
+        stepDone('step-read', 'File read (' + (selectedFile.size/1024).toFixed(0) + ' KB, ' + csvText.split('\n').length + ' lines)');
         setProgress(20, false);
 
-        // Step 2: Upload
+        // Step 2: Upload — send as plain text (most reliable, no serialization issues)
         stepActive('step-upload', 'Uploading to server...');
-        setProgress(30, true); // indeterminate while waiting
+        setProgress(30, true);
 
         var uploadDone = false;
-        // Animate upload step with a ticker
         var ticker = setInterval(function(){
           if (uploadDone) { clearInterval(ticker); return; }
           var txt = document.getElementById('step-upload-txt').textContent;
@@ -306,7 +305,11 @@
         }, 500);
 
         var startTime = Date.now();
-        var res = await fetch('/api/import-csv', { method:'POST', body: formData });
+        var res = await fetch('/api/import-csv', {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/csv', 'X-Filename': selectedFile.name },
+          body: csvText,
+        });
         uploadDone = true;
         clearInterval(ticker);
 

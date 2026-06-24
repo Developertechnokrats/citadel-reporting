@@ -1,11 +1,12 @@
 // netlify/functions/import-csv.js
-// ── KEY CHANGES FROM PREVIOUS VERSION ────────────────────────
-// 1. Uses "TrackTik Post ID" column directly (no Job ID stripping)
-// 2. MERGE logic: skips cycles already in DB (within 24hr window)
-//    preserves GHL live webhook data (Jun 11-21)
-// 3. Does NOT overwrite job field values if job already exists
-//    (GHL version wins for site name, region, manager etc.)
-// 4. Tags discrepancies with needs_review = true + review_notes
+// ─────────────────────────────────────────────────────────────
+// IMPORT STRATEGY:
+//   For each TrackTik Post ID in the CSV:
+//   1. Delete all existing CSV-sourced cycles (source = 'csv')
+//   2. Keep all GHL-sourced cycles (source = 'ghl') untouched
+//   3. Insert fresh cycles from CSV
+//   4. If job doesn't exist → insert it
+//   5. If job exists → don't overwrite field values (GHL wins)
 // ─────────────────────────────────────────────────────────────
 
 const { createClient } = require("@supabase/supabase-js");
@@ -57,23 +58,15 @@ function normalizeOfficerType(v) {
   return map[v.trim()] || v.trim().toLowerCase().replace(/\s+/g,"_");
 }
 
-// Normalise manager name — fix known casing/typo variants
 function normalizeManager(name) {
   if (!name) return null;
   const fixes = {
-    "brandon soll":           "Brandon Soll",
-    "heather jordan":         "Heather Jordan",
-    "kaithlyn antolic":       "Kaitlyn Antolic",
-    "spencer lane, heather jordan": "Spencer Lane",  // combined field → pick primary
+    "brandon soll":                  "Brandon Soll",
+    "heather jordan":                "Heather Jordan",
+    "kaithlyn antolic":              "Kaitlyn Antolic",
+    "spencer lane, heather jordan":  "Spencer Lane",
   };
-  const key = name.trim().toLowerCase();
-  return fixes[key] || name.trim();
-}
-
-// Check if two dates are within 24 hours of each other
-function within24hrs(d1, d2) {
-  if (!d1 || !d2) return false;
-  return Math.abs(new Date(d1) - new Date(d2)) <= 24 * 60 * 60 * 1000;
+  return fixes[name.trim().toLowerCase()] || name.trim();
 }
 
 // ── Cycle detection ───────────────────────────────────────────
@@ -83,121 +76,76 @@ function computeCycles(rowsForId) {
   );
   const cycles = [];
   let cycleOpen = null;
-  let lastRepostOpen = null;
+  let lastRepost = null;
   const n = sorted.length;
 
   sorted.forEach((r, i) => {
     if (cycleOpen === null) cycleOpen = parseDate(r["Job Date Created"]);
-    lastRepostOpen = parseDate(r["Job Date Created"]);
+    lastRepost = parseDate(r["Job Date Created"]);
     const stage  = r["Job Stage Name"];
     const isLast = i === n - 1;
 
     if (stage === "Position Filled") {
       const close = parseDate(r["Job Last Modified"]);
       let days = parseTimeToFill(r["Time to Fill"]);
-      if (days === null && lastRepostOpen && close)
-        days = round2((close - lastRepostOpen) / (1000*60*60*24));
-      cycles.push({ opened_at:cycleOpen, closed_at:close, days_to_hire:days, reason:"filled" });
-      cycleOpen = null; lastRepostOpen = null;
+      if (days === null && lastRepost && close)
+        days = round2((close - lastRepost) / (1000*60*60*24));
+      cycles.push({ opened_at: cycleOpen, closed_at: close, days_to_hire: days, reason: "filled" });
+      cycleOpen = null; lastRepost = null;
     } else if (stage === "Withdrawn" && isLast) {
-      cycles.push({ opened_at:cycleOpen, closed_at:parseDate(r["Job Last Modified"]), days_to_hire:null, reason:"withdrawn" });
+      cycles.push({ opened_at: cycleOpen, closed_at: parseDate(r["Job Last Modified"]), days_to_hire: null, reason: "withdrawn" });
       cycleOpen = null;
     }
-    // Indeed Refresh / Posted / mid-stream Withdrawn → ignored
+    // Indeed Refresh / Posted → ignored
   });
 
   if (cycleOpen !== null)
-    cycles.push({ opened_at:cycleOpen, closed_at:null, days_to_hire:null, reason:"still_open" });
+    cycles.push({ opened_at: cycleOpen, closed_at: null, days_to_hire: null, reason: "still_open" });
 
   return cycles;
-}
-
-// ── Discrepancy detector ──────────────────────────────────────
-function detectDiscrepancies(trackTikPostId, csvRows, csvCycles, existingCycles) {
-  const notes = [];
-
-  // Check if Job ID stripping would have given a different base ID
-  for (const r of csvRows) {
-    const jobId = r["Job ID"] || "";
-    const m = jobId.match(/^(.*?)[A-Z]?\d{2}$/i);
-    const stripped = m ? m[1] : jobId;
-    if (stripped !== trackTikPostId && stripped !== "") {
-      notes.push(`Job ID suffix stripping gives '${stripped}' but TrackTik Post ID is '${trackTikPostId}'`);
-      break;
-    }
-  }
-
-  // Check for very short cycles (< 1 day) — may indicate data issue
-  const shortCycles = csvCycles.filter(c => c.days_to_hire !== null && c.days_to_hire < 1);
-  if (shortCycles.length > 0)
-    notes.push(`${shortCycles.length} cycle(s) with < 1 day to hire — verify data`);
-
-  // Check for duplicate open dates with existing
-  for (const csvCycle of csvCycles) {
-    const conflict = existingCycles.find(ec =>
-      within24hrs(ec.opened_at, csvCycle.opened_at) && !ec.is_open
-    );
-    if (conflict)
-      notes.push(`CSV cycle (${csvCycle.opened_at?.toISOString().slice(0,10)}) overlaps existing closed cycle`);
-  }
-
-  // Combined manager name in CSV (e.g. "Spencer Lane, Heather Jordan")
-  for (const r of csvRows) {
-    if ((r["Hiring Manager"] || "").includes(","))
-      notes.push(`Combined manager name detected: '${r["Hiring Manager"]}'`);
-  }
-
-  return notes;
 }
 
 // ── Main handler ──────────────────────────────────────────────
 exports.handler = async (event) => {
   if (event.httpMethod !== "POST")
-    return { statusCode:405, body:JSON.stringify({ error:"Method not allowed" }) };
+    return { statusCode:405, headers:{"Content-Type":"application/json"}, body:JSON.stringify({ error:"Method not allowed" }) };
 
-  // ── Parse request — supports both JSON and multipart FormData ──
-  let filename = "upload.csv";
+  // ── Read CSV from plain text body ─────────────────────────
+  let filename = event.headers["x-filename"] || event.headers["X-Filename"] || "upload.csv";
   let csvText  = "";
 
   try {
-    const contentType = event.headers["content-type"] || event.headers["Content-Type"] || "";
-
-    if (contentType.includes("multipart/form-data")) {
-      const boundary = contentType.split("boundary=")[1];
-      const bodyStr  = Buffer.from(event.body, event.isBase64Encoded ? "base64" : "utf8").toString("utf8");
-      const fnMatch  = bodyStr.match(/filename="([^"]+)"/);
-      if (fnMatch) filename = fnMatch[1];
-      const parts = bodyStr.split("--" + boundary);
-      for (const part of parts) {
-        if (part.includes("Content-Type:") || part.includes('name="file"')) {
-          const start = part.indexOf("\r\n\r\n");
-          if (start !== -1) { csvText = part.slice(start + 4).replace(/\r\n--[\s\S]*$/, "").trim(); break; }
-        }
-      }
+    const contentType = (event.headers["content-type"] || event.headers["Content-Type"] || "").toLowerCase();
+    if (contentType.includes("text/csv") || contentType.includes("text/plain")) {
+      csvText = event.isBase64Encoded
+        ? Buffer.from(event.body, "base64").toString("utf8")
+        : event.body || "";
     } else {
-      const body = JSON.parse(event.body);
-      filename   = body.filename || "upload.csv";
+      const body = JSON.parse(event.body || "{}");
+      filename   = body.filename || filename;
       csvText    = body.csv || "";
     }
   } catch(e) {
     return { statusCode:400, headers:{"Content-Type":"application/json"}, body:JSON.stringify({ error:"Parse error: "+e.message }) };
   }
 
-  if (!csvText) return { statusCode:400, headers:{"Content-Type":"application/json"}, body:JSON.stringify({ error:"No CSV content received" }) };
+  if (!csvText || !csvText.trim())
+    return { statusCode:400, headers:{"Content-Type":"application/json"}, body:JSON.stringify({ error:"No CSV content received" }) };
 
+  // ── Parse CSV ─────────────────────────────────────────────
   let rows;
   try { rows = parse(csvText, { columns:true, skip_empty_lines:true }); }
-  catch(e) { return { statusCode:400, body:JSON.stringify({ error:"Cannot parse CSV: "+e.message }) }; }
+  catch(e) { return { statusCode:400, headers:{"Content-Type":"application/json"}, body:JSON.stringify({ error:"Cannot parse CSV: "+e.message }) }; }
 
-  if (!rows.length) return { statusCode:400, body:JSON.stringify({ error:"CSV is empty" }) };
+  if (!rows.length)
+    return { statusCode:400, headers:{"Content-Type":"application/json"}, body:JSON.stringify({ error:"CSV is empty" }) };
 
-  // Validate required columns
-  const required = ["TrackTik Post ID","Job ID","Job Date Created","Job Last Modified","Job Stage Name"];
+  const required = ["TrackTik Post ID","Job Date Created","Job Last Modified","Job Stage Name"];
   const missing  = required.filter(c => !(c in rows[0]));
   if (missing.length)
-    return { statusCode:400, body:JSON.stringify({ error:"Missing columns: "+missing.join(", ") }) };
+    return { statusCode:400, headers:{"Content-Type":"application/json"}, body:JSON.stringify({ error:"Missing columns: "+missing.join(", ") }) };
 
-  // ── Group by TrackTik Post ID (direct from column) ────────
+  // ── Group by TrackTik Post ID ─────────────────────────────
   const groups = new Map();
   for (const r of rows) {
     const tid = (r["TrackTik Post ID"] || "").trim();
@@ -207,57 +155,62 @@ exports.handler = async (event) => {
   }
 
   const postIds = [...groups.keys()];
+  if (!postIds.length)
+    return { statusCode:400, headers:{"Content-Type":"application/json"}, body:JSON.stringify({ error:"No valid TrackTik Post IDs found" }) };
 
   try {
-    // ── Snapshot existing data for undo ────────────────────
-    const { data: existingJobs }    = await supabase.from("job_requisitions").select("*").in("tracktik_post_id", postIds);
-    const { data: existingCycles }  = await supabase.from("job_cycles").select("*").in("tracktik_post_id", postIds);
-    const { data: existingHistory } = await supabase.from("job_status_history").select("*").in("tracktik_post_id", postIds);
+    // ── Snapshot for undo ─────────────────────────────────
+    const [{ data: existingJobs }, { data: existingCycles }, { data: existingHistory }] = await Promise.all([
+      supabase.from("job_requisitions").select("*").in("tracktik_post_id", postIds),
+      supabase.from("job_cycles").select("*").in("tracktik_post_id", postIds),
+      supabase.from("job_status_history").select("*").in("tracktik_post_id", postIds),
+    ]);
 
-    const existingJobMap   = new Map((existingJobs   || []).map(j => [j.tracktik_post_id, j]));
-    const existingCycleMap = new Map();
-    for (const c of (existingCycles || [])) {
-      if (!existingCycleMap.has(c.tracktik_post_id))
-        existingCycleMap.set(c.tracktik_post_id, []);
-      existingCycleMap.get(c.tracktik_post_id).push(c);
-    }
-
-    const existingSet = new Set(existingJobMap.keys());
+    const existingSet = new Set((existingJobs||[]).map(j => j.tracktik_post_id));
     const newPostIds  = postIds.filter(id => !existingSet.has(id));
 
     const snapshot = {
       post_ids: postIds, new_post_ids: newPostIds,
-      jobs: existingJobs || [], cycles: existingCycles || [], history: existingHistory || [],
+      jobs: existingJobs||[], cycles: existingCycles||[], history: existingHistory||[],
     };
 
-    // ── Process each job ────────────────────────────────────
-    let totalNewCycles = 0, totalSkippedCycles = 0;
+    // ── Step 1: Delete only CSV-sourced cycles for these IDs ──
+    // GHL cycles (source='ghl') are preserved
+    await supabase
+      .from("job_cycles")
+      .delete()
+      .in("tracktik_post_id", postIds)
+      .eq("source", "csv");
+
+    // Also delete CSV-sourced history
+    await supabase
+      .from("job_status_history")
+      .delete()
+      .in("tracktik_post_id", postIds)
+      .filter("raw_payload->source", "eq", "csv_import");
+
+    // ── Step 2: Process each job ──────────────────────────
+    const jobUpserts     = [];
+    const cycleInserts   = [];
+    const historyInserts = [];
+
     let filledCount = 0, withdrawnCount = 0, openCount = 0;
     let reviewCount = 0;
 
     for (const [trackTikPostId, groupRows] of groups.entries()) {
-      const sortedByDate = [...groupRows].sort(
+      const sortedRows = [...groupRows].sort(
         (a,b) => parseDate(a["Job Date Created"]) - parseDate(b["Job Date Created"])
       );
-      const earliest  = sortedByDate[0];
-      const latest    = sortedByDate[sortedByDate.length-1];
-      const csvCycles = computeCycles(groupRows);
-      const existing  = existingJobMap.get(trackTikPostId);
-      const existingCyclesForJob = existingCycleMap.get(trackTikPostId) || [];
+      const earliest = sortedRows[0];
+      const latest   = sortedRows[sortedRows.length - 1];
+      const cycles   = computeCycles(groupRows);
 
-      // ── Detect discrepancies ──────────────────────────────
-      const discrepancies = detectDiscrepancies(trackTikPostId, groupRows, csvCycles, existingCyclesForJob);
-      const needsReview   = discrepancies.length > 0;
-      const reviewNotes   = discrepancies.join(" | ") || null;
+      const lastCycle     = cycles[cycles.length - 1];
+      const currentStatus = lastCycle?.reason === "still_open" ? "open" : "closed";
 
-      // ── Upsert job_requisitions ───────────────────────────
-      // If job already exists → only update status + review flags (don't touch field values)
-      // If new → insert everything
-      if (!existing) {
-        const lastCycle     = csvCycles[csvCycles.length-1];
-        const currentStatus = lastCycle?.reason === "still_open" ? "open" : "closed";
-
-        const { error: insertErr } = await supabase.from("job_requisitions").insert({
+      // Only insert new jobs — don't overwrite existing GHL data
+      if (!existingSet.has(trackTikPostId)) {
+        jobUpserts.push({
           tracktik_post_id:         trackTikPostId,
           tracktik_site_id:         latest["TrackTik Site ID"]                  || null,
           site_name_position_shift: latest["Site Name - Position Type - Shift"] || null,
@@ -267,114 +220,122 @@ exports.handler = async (event) => {
           position_start_date:      latest["Position Start Date"]                || null,
           advertised_pay_rate:      latest["Salary Range"]                       || null,
           current_status:           currentStatus,
-          total_cycles:             csvCycles.length,
-          first_seen_at:            parseDate(earliest["Job Date Created"]).toISOString(),
-          created_at:               parseDate(earliest["Job Date Created"]).toISOString(),
+          total_cycles:             cycles.length,
+          first_seen_at:            parseDate(earliest["Job Date Created"])?.toISOString() || new Date().toISOString(),
+          created_at:               parseDate(earliest["Job Date Created"])?.toISOString() || new Date().toISOString(),
           updated_at:               new Date().toISOString(),
-          needs_review:             needsReview,
-          review_notes:             reviewNotes,
         });
-        if (insertErr) throw new Error(`Insert job: ${insertErr.message}`);
-      } else {
-        // Job exists — only update review flags + total_cycles (don't overwrite GHL data)
-        const { error: updateErr } = await supabase.from("job_requisitions").update({
-          needs_review: needsReview || existing.needs_review,
-          review_notes: [existing.review_notes, reviewNotes].filter(Boolean).join(" | ") || null,
-          updated_at:   new Date().toISOString(),
-        }).eq("tracktik_post_id", trackTikPostId);
-        if (updateErr) throw new Error(`Update job: ${updateErr.message}`);
       }
 
-      if (needsReview) reviewCount++;
+      // Check for discrepancies
+      const notes = [];
+      if (cycles.some(c => c.days_to_hire !== null && c.days_to_hire < 1))
+        notes.push("cycle < 1 day");
+      for (const r of groupRows) {
+        if ((r["Hiring Manager"]||"").includes(","))
+          notes.push(`combined manager: '${r["Hiring Manager"]}'`);
+      }
+      if (notes.length) reviewCount++;
 
-      // ── Merge cycles ──────────────────────────────────────
-      // For each CSV cycle, check if a matching cycle already exists in DB
-      // Match = opened_at within 24 hours of each other
-      // If match found → skip (preserve GHL data)
-      // If no match → insert as new cycle
+      // Get GHL cycles for this job to determine starting cycle number
+      const ghlCycles = (existingCycles||[]).filter(
+        c => c.tracktik_post_id === trackTikPostId && c.source === "ghl"
+      );
+      const maxGhlCycle = ghlCycles.length > 0
+        ? Math.max(...ghlCycles.map(c => c.cycle_number))
+        : 0;
 
-      // Determine next cycle number (after existing ones)
-      let nextCycleNum = existingCyclesForJob.length > 0
-        ? Math.max(...existingCyclesForJob.map(c => c.cycle_number)) + 1
-        : 1;
+      const totalFilledDays = cycles
+        .filter(c => c.reason === "filled" && c.days_to_hire !== null)
+        .reduce((s,c) => s + c.days_to_hire, 0);
 
-      const totalFilledDays = csvCycles
-        .filter(c => c.reason==="filled" && c.days_to_hire!==null)
-        .reduce((s,c) => s+c.days_to_hire, 0);
-
-      for (const csvCycle of csvCycles) {
-        // Check for existing cycle within 24hr window
-        const alreadyExists = existingCyclesForJob.some(ec =>
-          within24hrs(ec.opened_at, csvCycle.opened_at)
-        );
-
-        if (alreadyExists) {
-          totalSkippedCycles++;
-          continue; // preserve GHL live data
-        }
-
-        // Insert new cycle
-        const cycleNum = nextCycleNum++;
-        const pct = (csvCycle.reason==="filled" && csvCycle.days_to_hire!==null && totalFilledDays>0)
-          ? round2((csvCycle.days_to_hire/totalFilledDays)*100)
+      cycles.forEach((c, i) => {
+        const cycleNum = maxGhlCycle + i + 1;
+        const pct = (c.reason === "filled" && c.days_to_hire !== null && totalFilledDays > 0)
+          ? round2((c.days_to_hire / totalFilledDays) * 100)
           : null;
 
-        const { error: cycleErr } = await supabase.from("job_cycles").insert({
+        cycleInserts.push({
           tracktik_post_id: trackTikPostId,
           cycle_number:     cycleNum,
-          opened_at:        csvCycle.opened_at?.toISOString()  || null,
-          closed_at:        csvCycle.closed_at?.toISOString()  || null,
-          days_to_hire:     csvCycle.days_to_hire,
+          opened_at:        c.opened_at?.toISOString()  || null,
+          closed_at:        c.closed_at?.toISOString()  || null,
+          days_to_hire:     c.days_to_hire,
           pct_time_to_hire: pct,
-          is_open:          csvCycle.closed_at === null,
+          is_open:          c.closed_at === null,
+          source:           "csv",
         });
-        if (cycleErr) throw new Error(`Insert cycle: ${cycleErr.message}`);
 
-        // History: open event
-        await supabase.from("job_status_history").insert({
+        historyInserts.push({
           tracktik_post_id: trackTikPostId,
           status:           "open",
           cycle_number:     cycleNum,
-          recorded_at:      csvCycle.opened_at?.toISOString() || new Date().toISOString(),
+          recorded_at:      c.opened_at?.toISOString() || new Date().toISOString(),
           raw_payload:      { source:"csv_import", filename },
         });
 
-        if (csvCycle.closed_at) {
-          await supabase.from("job_status_history").insert({
+        if (c.closed_at) {
+          historyInserts.push({
             tracktik_post_id: trackTikPostId,
             status:           "closed",
             cycle_number:     cycleNum,
-            recorded_at:      csvCycle.closed_at.toISOString(),
-            raw_payload:      { source:"csv_import", filename, reason:csvCycle.reason },
+            recorded_at:      c.closed_at.toISOString(),
+            raw_payload:      { source:"csv_import", filename, reason: c.reason },
           });
         }
 
-        totalNewCycles++;
-        if (csvCycle.reason==="filled")     filledCount++;
-        else if (csvCycle.reason==="withdrawn") withdrawnCount++;
+        if (c.reason === "filled")     filledCount++;
+        else if (c.reason === "withdrawn") withdrawnCount++;
         else openCount++;
-      }
-
-      // Update total_cycles count on the job
-      const { data: allCyclesNow } = await supabase.from("job_cycles")
-        .select("cycle_number").eq("tracktik_post_id", trackTikPostId);
-      await supabase.from("job_requisitions").update({
-        total_cycles: (allCyclesNow||[]).length,
-      }).eq("tracktik_post_id", trackTikPostId);
+      });
     }
 
-    // ── Record batch for undo ──────────────────────────────
+    // ── Step 3: Bulk insert (batches of 200) ──────────────
+    if (jobUpserts.length) {
+      const { error } = await supabase.from("job_requisitions").upsert(jobUpserts, { onConflict:"tracktik_post_id" });
+      if (error) throw new Error("Insert jobs: " + error.message);
+    }
+
+    for (let i = 0; i < cycleInserts.length; i += 200) {
+      const { error } = await supabase.from("job_cycles").insert(cycleInserts.slice(i, i+200));
+      if (error) throw new Error("Insert cycles: " + error.message);
+    }
+
+    for (let i = 0; i < historyInserts.length; i += 200) {
+      const { error } = await supabase.from("job_status_history").insert(historyInserts.slice(i, i+200));
+      if (error) throw new Error("Insert history: " + error.message);
+    }
+
+    // ── Step 4: Update total_cycles per job ───────────────
+    // Bulk update using a single query
+    const { data: cycleCounts } = await supabase
+      .from("job_cycles")
+      .select("tracktik_post_id")
+      .in("tracktik_post_id", postIds);
+
+    const countMap = {};
+    (cycleCounts||[]).forEach(c => {
+      countMap[c.tracktik_post_id] = (countMap[c.tracktik_post_id]||0) + 1;
+    });
+
+    for (const [tid, cnt] of Object.entries(countMap)) {
+      await supabase.from("job_requisitions")
+        .update({ total_cycles: cnt, updated_at: new Date().toISOString() })
+        .eq("tracktik_post_id", tid);
+    }
+
+    // ── Step 5: Record batch ──────────────────────────────
     const { data: batch, error: batchErr } = await supabase
       .from("import_batches")
       .insert({
-        filename:     filename || "upload.csv",
+        filename,
         total_jobs:   groups.size,
-        total_cycles: totalNewCycles,
+        total_cycles: cycleInserts.length,
         status:       "completed",
         snapshot,
       })
       .select().single();
-    if (batchErr) throw new Error(`Record batch: ${batchErr.message}`);
+    if (batchErr) throw new Error("Record batch: " + batchErr.message);
 
     return {
       statusCode: 200,
@@ -386,8 +347,8 @@ exports.handler = async (event) => {
         jobs_processed:    groups.size,
         new_jobs:          newPostIds.length,
         existing_jobs:     groups.size - newPostIds.length,
-        new_cycles:        totalNewCycles,
-        skipped_cycles:    totalSkippedCycles,
+        new_cycles:        cycleInserts.length,
+        skipped_cycles:    0,
         filled_cycles:     filledCount,
         withdrawn_cycles:  withdrawnCount,
         still_open_cycles: openCount,
@@ -395,7 +356,7 @@ exports.handler = async (event) => {
       }),
     };
 
-  } catch (err) {
+  } catch(err) {
     console.error("[Import Error]", err.message);
     return {
       statusCode: 500,
