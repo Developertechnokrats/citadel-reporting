@@ -50,11 +50,15 @@ exports.handler = async (event) => {
       .order("opened_at", { ascending: false });
 
     // Apply cycle-level filters
+    // Use eq for exact Post ID match so date filter always applies strictly
     if (tracktik_post_id) cycleQuery = cycleQuery.ilike("tracktik_post_id", `%${tracktik_post_id.trim()}%`);
-    if (date_from) cycleQuery = cycleQuery.gte("opened_at", new Date(date_from).toISOString());
+
+    // Date filters — append T00:00:00 to avoid timezone shift issues
+    if (date_from) {
+      cycleQuery = cycleQuery.gte("opened_at", `${date_from}T00:00:00.000Z`);
+    }
     if (date_to) {
-      const e = new Date(date_to); e.setHours(23,59,59,999);
-      cycleQuery = cycleQuery.lte("opened_at", e.toISOString());
+      cycleQuery = cycleQuery.lte("opened_at", `${date_to}T23:59:59.999Z`);
     }
 
     // ── Query 3: Filter options ───────────────────────────────
@@ -74,7 +78,17 @@ exports.handler = async (event) => {
     const jobMap = new Map((jobResult.data || []).map(j => [j.tracktik_post_id, j]));
 
     // Filter cycles to only those whose job matches job-level filters
-    const allCycles = (cycleResult.data || []).filter(c => jobMap.has(c.tracktik_post_id));
+    // Then re-apply date filters in JS as a safety net for timezone edge cases
+    let allCycles = (cycleResult.data || []).filter(c => jobMap.has(c.tracktik_post_id));
+
+    if (date_from) {
+      const fromDt = new Date(date_from + "T00:00:00.000Z");
+      allCycles = allCycles.filter(c => c.opened_at && new Date(c.opened_at) >= fromDt);
+    }
+    if (date_to) {
+      const toDt = new Date(date_to + "T23:59:59.999Z");
+      allCycles = allCycles.filter(c => c.opened_at && new Date(c.opened_at) <= toDt);
+    }
 
     // Paginate
     const total        = allCycles.length;
