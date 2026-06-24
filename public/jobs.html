@@ -167,7 +167,7 @@
             <td>${(j.hiring_manager||"—").replace(/_/g," ")}</td>
             <td><span class="badge badge--${status}">${status}</span></td>
             <td style="text-align:center">${j.total_cycles||0}</td>
-            <td>${j.first_seen_at ? new Date(j.first_seen_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "—"}</td>
+            <td>${j.first_seen_at ? new Date(j.first_seen_at).toLocaleDateString("en-US",{month:"2-digit",day:"2-digit",year:"numeric",timeZone:"UTC"}) : "—"}</td>
             <td><button class="btn--detail" onclick="openDetail('${c.tracktik_post_id}')">Detail</button></td>
           `;
           body.appendChild(tr);
