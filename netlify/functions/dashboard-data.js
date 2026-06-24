@@ -94,7 +94,7 @@ exports.handler = async (event) => {
 
     const avgDaysToHire = filledDays.length > 0
       ? parseFloat((filledDays.reduce((a,b) => a+b, 0) / filledDays.length).toFixed(1))
-      : 0;
+      : null;
 
     // Unique jobs in the filtered result
     const filteredJobIds = new Set(allCycles.map(c => c.tracktik_post_id));
