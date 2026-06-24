@@ -497,3 +497,38 @@ a:hover { text-decoration: underline; }
   .filter-grid { grid-template-columns: 1fr; }
   .header-nav { display: none; }
 }
+
+/* ── Flatpickr date picker overrides ─────────────────────── */
+.flatpickr-calendar {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border-mid) !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,.08) !important;
+  border-radius: var(--radius-md) !important;
+}
+.flatpickr-day.selected,
+.flatpickr-day.selected:hover {
+  background: var(--gold) !important;
+  border-color: var(--gold) !important;
+  color: #fff !important;
+}
+.flatpickr-day:hover {
+  background: var(--bg-row-hover) !important;
+}
+.flatpickr-months .flatpickr-month,
+.flatpickr-weekdays,
+span.flatpickr-weekday {
+  background: var(--bg-card) !important;
+  color: var(--text-secondary) !important;
+}
+.flatpickr-current-month .flatpickr-monthDropdown-months,
+.flatpickr-current-month input.cur-year {
+  background: transparent !important;
+  color: var(--text-primary) !important;
+}
+.flatpickr-day {
+  color: var(--text-secondary) !important;
+}
+.flatpickr-day.flatpickr-disabled { color: var(--text-muted) !important; }
+.flatpickr-input[readonly] { cursor: pointer; }
+/* Alt input inherits filter-input styles */
+.flatpickr-input.flatpickr-input.form-control { display: none !important; }

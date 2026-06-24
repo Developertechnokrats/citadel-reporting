@@ -26,12 +26,19 @@ const modalContent  = document.getElementById("modal-content");
 
 // ── Filters ───────────────────────────────────────────────
 function getFilters() {
+  // flatpickr stores YYYY-MM-DD in the original input, MM/DD/YYYY in the altInput
+  // Reading .value from the original input always gives YYYY-MM-DD
+  const dateFromEl = document.getElementById("f-date-from");
+  const dateToEl   = document.getElementById("f-date-to");
+  const dateFrom   = dateFromEl._flatpickr ? dateFromEl.value : dateFromEl.value;
+  const dateTo     = dateToEl._flatpickr   ? dateToEl.value   : dateToEl.value;
+
   return {
     tracktik_post_id: document.getElementById("f-tracktik").value.trim(),
     tracktik_site_id: document.getElementById("f-site-id").value.trim(),
     status:           document.getElementById("f-status").value,
-    date_from:        document.getElementById("f-date-from").value,
-    date_to:          document.getElementById("f-date-to").value,
+    date_from:        dateFrom,
+    date_to:          dateTo,
     region:           document.getElementById("f-region").value,
     city:             document.getElementById("f-city").value,
     hiring_manager:   document.getElementById("f-manager").value,
@@ -421,8 +428,13 @@ document.getElementById("btn-apply").addEventListener("click", () => {
 });
 
 document.getElementById("btn-reset").addEventListener("click", () => {
-  ["f-tracktik","f-site-id","f-status","f-date-from","f-date-to","f-region","f-city","f-manager","f-officer"]
+  ["f-tracktik","f-site-id","f-status","f-region","f-city","f-manager","f-officer"]
     .forEach(id => { document.getElementById(id).value = ""; });
+  // Clear flatpickr date pickers
+  if (document.getElementById("f-date-from")._flatpickr)
+    document.getElementById("f-date-from")._flatpickr.clear();
+  if (document.getElementById("f-date-to")._flatpickr)
+    document.getElementById("f-date-to")._flatpickr.clear();
   currentPage = 1;
   loadDashboard();
 });

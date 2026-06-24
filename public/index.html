@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Job Requisition Dashboard</title>
   <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.css" />
+  <style>
+    .flatpickr-input { background: var(--bg-card-2) !important; color: var(--text-primary) !important; }
+    .flatpickr-alt-input { width: 100%; }
+  </style>
 </head>
 <body>
 
@@ -73,12 +78,12 @@
 
           <div class="filter-group">
             <label class="filter-label" for="f-date-from">Opened From</label>
-            <input type="date" id="f-date-from" class="filter-input" />
+            <input type="text" id="f-date-from" class="filter-input" placeholder="MM/DD/YYYY" readonly />
           </div>
 
           <div class="filter-group">
             <label class="filter-label" for="f-date-to">Opened To</label>
-            <input type="date" id="f-date-to" class="filter-input" />
+            <input type="text" id="f-date-to" class="filter-input" placeholder="MM/DD/YYYY" readonly />
           </div>
 
           <div class="filter-group">
@@ -167,5 +172,24 @@
   </div>
 
   <script src="/app.js"></script>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.js"></script>
+  <script>
+    // Force MM/DD/YYYY date picker regardless of OS locale
+    flatpickr("#f-date-from", {
+      dateFormat: "Y-m-d",
+      altInput: true,
+      altFormat: "m/d/Y",
+      allowInput: true,
+      disableMobile: true,
+    });
+    flatpickr("#f-date-to", {
+      dateFormat: "Y-m-d",
+      altInput: true,
+      altFormat: "m/d/Y",
+      allowInput: true,
+      disableMobile: true,
+    });
+  </script>
 </body>
 </html>
