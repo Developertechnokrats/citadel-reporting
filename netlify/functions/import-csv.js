@@ -155,15 +155,38 @@ exports.handler = async (event) => {
   if (event.httpMethod !== "POST")
     return { statusCode:405, body:JSON.stringify({ error:"Method not allowed" }) };
 
-  let body;
-  try { body = JSON.parse(event.body); }
-  catch { return { statusCode:400, body:JSON.stringify({ error:"Invalid JSON body" }) }; }
+  // ── Parse request — supports both JSON and multipart FormData ──
+  let filename = "upload.csv";
+  let csvText  = "";
 
-  const { filename, csv } = body;
-  if (!csv) return { statusCode:400, body:JSON.stringify({ error:"Missing csv content" }) };
+  try {
+    const contentType = event.headers["content-type"] || event.headers["Content-Type"] || "";
+
+    if (contentType.includes("multipart/form-data")) {
+      const boundary = contentType.split("boundary=")[1];
+      const bodyStr  = Buffer.from(event.body, event.isBase64Encoded ? "base64" : "utf8").toString("utf8");
+      const fnMatch  = bodyStr.match(/filename="([^"]+)"/);
+      if (fnMatch) filename = fnMatch[1];
+      const parts = bodyStr.split("--" + boundary);
+      for (const part of parts) {
+        if (part.includes("Content-Type:") || part.includes('name="file"')) {
+          const start = part.indexOf("\r\n\r\n");
+          if (start !== -1) { csvText = part.slice(start + 4).replace(/\r\n--[\s\S]*$/, "").trim(); break; }
+        }
+      }
+    } else {
+      const body = JSON.parse(event.body);
+      filename   = body.filename || "upload.csv";
+      csvText    = body.csv || "";
+    }
+  } catch(e) {
+    return { statusCode:400, headers:{"Content-Type":"application/json"}, body:JSON.stringify({ error:"Parse error: "+e.message }) };
+  }
+
+  if (!csvText) return { statusCode:400, headers:{"Content-Type":"application/json"}, body:JSON.stringify({ error:"No CSV content received" }) };
 
   let rows;
-  try { rows = parse(csv, { columns:true, skip_empty_lines:true }); }
+  try { rows = parse(csvText, { columns:true, skip_empty_lines:true }); }
   catch(e) { return { statusCode:400, body:JSON.stringify({ error:"Cannot parse CSV: "+e.message }) }; }
 
   if (!rows.length) return { statusCode:400, body:JSON.stringify({ error:"CSV is empty" }) };
