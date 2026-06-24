@@ -24,6 +24,23 @@ exports.handler = async (event) => {
   const pageNum = Math.max(1, parseInt(page));
   const limit   = Math.min(100, Math.max(1, parseInt(per_page)));
 
+  // ── Parse MM/DD/YYYY dates → YYYY-MM-DD for Supabase ────────
+  function parseInputDate(str) {
+    if (!str || !str.trim()) return null;
+    // Accept MM/DD/YYYY or YYYY-MM-DD
+    const mmddyyyy = str.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (mmddyyyy) {
+      const [, mm, dd, yyyy] = mmddyyyy;
+      return `${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`;
+    }
+    const yyyymmdd = str.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (yyyymmdd) return str.trim();
+    return null;
+  }
+
+  const parsedFrom = parseInputDate(date_from);
+  const parsedTo   = parseInputDate(date_to);
+
   try {
     // ── Query 1: All job_requisitions (lightweight) ──────────
     let jobQuery = supabase
@@ -54,11 +71,11 @@ exports.handler = async (event) => {
     if (tracktik_post_id) cycleQuery = cycleQuery.ilike("tracktik_post_id", `%${tracktik_post_id.trim()}%`);
 
     // Date filters — append T00:00:00 to avoid timezone shift issues
-    if (date_from) {
-      cycleQuery = cycleQuery.gte("opened_at", `${date_from}T00:00:00.000Z`);
+    if (parsedFrom) {
+      cycleQuery = cycleQuery.gte("opened_at", `${parsedFrom}T00:00:00.000Z`);
     }
-    if (date_to) {
-      cycleQuery = cycleQuery.lte("opened_at", `${date_to}T23:59:59.999Z`);
+    if (parsedTo) {
+      cycleQuery = cycleQuery.lte("opened_at", `${parsedTo}T23:59:59.999Z`);
     }
 
     // ── Query 3: Filter options ───────────────────────────────
@@ -81,12 +98,12 @@ exports.handler = async (event) => {
     // Then re-apply date filters in JS as a safety net for timezone edge cases
     let allCycles = (cycleResult.data || []).filter(c => jobMap.has(c.tracktik_post_id));
 
-    if (date_from) {
-      const fromDt = new Date(date_from + "T00:00:00.000Z");
+    if (parsedFrom) {
+      const fromDt = new Date(parsedFrom + "T00:00:00.000Z");
       allCycles = allCycles.filter(c => c.opened_at && new Date(c.opened_at) >= fromDt);
     }
-    if (date_to) {
-      const toDt = new Date(date_to + "T23:59:59.999Z");
+    if (parsedTo) {
+      const toDt = new Date(parsedTo + "T23:59:59.999Z");
       allCycles = allCycles.filter(c => c.opened_at && new Date(c.opened_at) <= toDt);
     }
 
