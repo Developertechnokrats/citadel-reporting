@@ -1,6 +1,3 @@
-// netlify/functions/dashboard-data.js
-// Uses two simple queries + JS join instead of unstable PostgREST !inner joins
-
 const { createClient } = require("@supabase/supabase-js");
 
 const supabase = createClient(
@@ -9,9 +6,8 @@ const supabase = createClient(
 );
 
 exports.handler = async (event) => {
-  if (event.httpMethod !== "GET") {
+  if (event.httpMethod !== "GET")
     return { statusCode: 405, body: JSON.stringify({ error: "Method not allowed" }) };
-  }
 
   const q = event.queryStringParameters || {};
   const {
@@ -24,113 +20,60 @@ exports.handler = async (event) => {
   const pageNum = Math.max(1, parseInt(page));
   const limit   = Math.min(100, Math.max(1, parseInt(per_page)));
 
-  // ── Parse MM/DD/YYYY dates → YYYY-MM-DD for Supabase ────────
-  function parseInputDate(str) {
-    if (!str || !str.trim()) return null;
-    // Accept MM/DD/YYYY or YYYY-MM-DD
-    const mmddyyyy = str.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (mmddyyyy) {
-      const [, mm, dd, yyyy] = mmddyyyy;
-      return `${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`;
-    }
-    const yyyymmdd = str.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (yyyymmdd) return str.trim();
-    return null;
-  }
-
-  const parsedFrom = parseInputDate(date_from);
-  const parsedTo   = parseInputDate(date_to);
-
   try {
-    // ── Query 1: All job_requisitions (lightweight) ──────────
+    // ── Query 1: jobs ─────────────────────────────────────────
     let jobQuery = supabase
       .from("job_requisitions")
-      .select(`
-        tracktik_post_id, site_name_position_shift, region,
-        city_of_site_location, hiring_manager, officer_type,
-        current_status, total_cycles, tracktik_site_id,
-        ghl_id, advertised_pay_rate, first_seen_at
-      `);
+      .select("tracktik_post_id, site_name_position_shift, region, city_of_site_location, hiring_manager, officer_type, current_status, total_cycles, tracktik_site_id, ghl_id, advertised_pay_rate, first_seen_at");
 
-    // Apply job-level filters
-    if (status)         jobQuery = jobQuery.eq("current_status", status.toLowerCase());
-    if (region)         jobQuery = jobQuery.ilike("region", `%${region}%`);
-    if (city)           jobQuery = jobQuery.ilike("city_of_site_location", `%${city}%`);
-    if (hiring_manager) jobQuery = jobQuery.ilike("hiring_manager", `%${hiring_manager}%`);
-    if (officer_type)   jobQuery = jobQuery.ilike("officer_type", `%${officer_type}%`);
+    if (status)           jobQuery = jobQuery.eq("current_status", status.toLowerCase());
+    if (region)           jobQuery = jobQuery.ilike("region", `%${region}%`);
+    if (city)             jobQuery = jobQuery.ilike("city_of_site_location", `%${city}%`);
+    if (hiring_manager)   jobQuery = jobQuery.ilike("hiring_manager", `%${hiring_manager}%`);
+    if (officer_type)     jobQuery = jobQuery.ilike("officer_type", `%${officer_type}%`);
     if (tracktik_site_id) jobQuery = jobQuery.ilike("tracktik_site_id", `%${tracktik_site_id}%`);
 
-    // ── Query 2: All job_cycles ───────────────────────────────
+    // ── Query 2: cycles ───────────────────────────────────────
     let cycleQuery = supabase
       .from("job_cycles")
       .select("id, tracktik_post_id, cycle_number, opened_at, closed_at, days_to_hire, pct_time_to_hire, is_open")
       .order("opened_at", { ascending: false });
 
-    // Apply cycle-level filters
-    // Use eq for exact Post ID match so date filter always applies strictly
     if (tracktik_post_id) cycleQuery = cycleQuery.ilike("tracktik_post_id", `%${tracktik_post_id.trim()}%`);
 
-    // Date filters — append T00:00:00 to avoid timezone shift issues
-    if (parsedFrom) {
-      cycleQuery = cycleQuery.gte("opened_at", `${parsedFrom}T00:00:00.000Z`);
-    }
-    if (parsedTo) {
-      cycleQuery = cycleQuery.lte("opened_at", `${parsedTo}T23:59:59.999Z`);
-    }
+    // Date filter — date input always gives YYYY-MM-DD
+    if (date_from) cycleQuery = cycleQuery.gte("opened_at", date_from + "T00:00:00.000Z");
+    if (date_to)   cycleQuery = cycleQuery.lte("opened_at", date_to   + "T23:59:59.999Z");
 
-    // ── Query 3: Filter options ───────────────────────────────
+    // ── Query 3: filter options ───────────────────────────────
     const filterQuery = supabase
       .from("job_requisitions")
       .select("region, city_of_site_location, hiring_manager, officer_type, tracktik_site_id");
 
-    // Run all 3 in parallel
-    const [jobResult, cycleResult, filterResult] = await Promise.all([
-      jobQuery, cycleQuery, filterQuery
-    ]);
+    const [jobResult, cycleResult, filterResult] = await Promise.all([jobQuery, cycleQuery, filterQuery]);
 
-    if (jobResult.error)   throw new Error(`Jobs: ${jobResult.error.message}`);
-    if (cycleResult.error) throw new Error(`Cycles: ${cycleResult.error.message}`);
+    if (jobResult.error)   throw new Error(jobResult.error.message);
+    if (cycleResult.error) throw new Error(cycleResult.error.message);
 
-    // ── Join in JavaScript ────────────────────────────────────
+    // ── Join ──────────────────────────────────────────────────
     const jobMap = new Map((jobResult.data || []).map(j => [j.tracktik_post_id, j]));
 
-    // Filter cycles to only those whose job matches job-level filters
-    // Then re-apply date filters in JS as a safety net for timezone edge cases
-    let allCycles = (cycleResult.data || []).filter(c => jobMap.has(c.tracktik_post_id));
+    // Keep only cycles whose job passes the job-level filters
+    const allCycles = (cycleResult.data || []).filter(c => jobMap.has(c.tracktik_post_id));
 
-    if (parsedFrom) {
-      const fromDt = new Date(parsedFrom + "T00:00:00.000Z");
-      allCycles = allCycles.filter(c => c.opened_at && new Date(c.opened_at) >= fromDt);
-    }
-    if (parsedTo) {
-      const toDt = new Date(parsedTo + "T23:59:59.999Z");
-      allCycles = allCycles.filter(c => c.opened_at && new Date(c.opened_at) <= toDt);
-    }
+    const total       = allCycles.length;
+    const pagedCycles = allCycles.slice((pageNum - 1) * limit, (pageNum - 1) * limit + limit);
 
-    // Paginate
-    const total        = allCycles.length;
-    const pagedCycles  = allCycles.slice((pageNum - 1) * limit, (pageNum - 1) * limit + limit);
-
-    // Attach job details to each cycle
     const shapedCycles = pagedCycles.map(c => ({
       ...c,
       is_open: !!c.is_open,
       job_requisitions: jobMap.get(c.tracktik_post_id) || {},
     }));
 
-    // ── Summary stats ─────────────────────────────────────────
-    const filledDays = allCycles
-      .filter(c => c.days_to_hire !== null)
-      .map(c => parseFloat(c.days_to_hire));
-
-    const avgDaysToHire = filledDays.length > 0
-      ? parseFloat((filledDays.reduce((a,b) => a+b, 0) / filledDays.length).toFixed(1))
-      : null;
-
-    // Unique jobs in the filtered result
-    const filteredJobIds = new Set(allCycles.map(c => c.tracktik_post_id));
-    const filteredJobs   = [...filteredJobIds].map(id => jobMap.get(id)).filter(Boolean);
-    const openJobs       = filteredJobs.filter(j => j.current_status === "open").length;
+    // ── Stats ─────────────────────────────────────────────────
+    const filledDays   = allCycles.filter(c => c.days_to_hire !== null).map(c => parseFloat(c.days_to_hire));
+    const avgDays      = filledDays.length > 0 ? parseFloat((filledDays.reduce((a,b)=>a+b,0)/filledDays.length).toFixed(1)) : null;
+    const filteredJobs = [...new Set(allCycles.map(c => c.tracktik_post_id))].map(id => jobMap.get(id)).filter(Boolean);
 
     // ── Filter options ────────────────────────────────────────
     const fo     = filterResult.data || [];
@@ -141,15 +84,12 @@ exports.handler = async (event) => {
       headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
       body: JSON.stringify({
         cycles: shapedCycles,
-        pagination: {
-          page: pageNum, per_page: limit,
-          total, total_pages: Math.ceil(total / limit),
-        },
+        pagination: { page: pageNum, per_page: limit, total, total_pages: Math.ceil(total / limit) },
         summary: {
-          total_jobs:       filteredJobIds.size,
-          open_jobs:        openJobs,
+          total_jobs:       filteredJobs.length,
+          open_jobs:        filteredJobs.filter(j => j.current_status === "open").length,
           total_cycles:     total,
-          avg_days_to_hire: avgDaysToHire,
+          avg_days_to_hire: avgDays,
         },
         filter_options: {
           regions:           unique("region"),
@@ -162,11 +102,7 @@ exports.handler = async (event) => {
     };
 
   } catch (err) {
-    console.error(`[Dashboard Error] ${err.message}`);
-    return {
-      statusCode: 500,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ error: err.message }),
-    };
+    console.error("[Dashboard Error]", err.message);
+    return { statusCode: 500, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: err.message }) };
   }
 };
