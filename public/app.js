@@ -16,8 +16,6 @@ const pagination   = document.getElementById("pagination");
 const resultsCount = document.getElementById("results-count");
 
 const statTotalJobs    = document.getElementById("stat-total-jobs");
-const statOpenJobs     = document.getElementById("stat-open-jobs");
-const statTotalCycles  = document.getElementById("stat-total-cycles");
 const statAvgDays      = document.getElementById("stat-avg-days");
 
 const modalOverlay  = document.getElementById("modal-overlay");
@@ -63,13 +61,16 @@ async function loadDashboard() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 
-    // Summary
-    statTotalJobs.textContent   = (data.summary?.total_jobs   ?? "—").toLocaleString();
-    statOpenJobs.textContent    = (data.summary?.open_jobs    ?? "—").toLocaleString();
-    statTotalCycles.textContent = (data.summary?.total_cycles ?? "—").toLocaleString();
+    // Summary stats
+    statTotalJobs.textContent   = (data.summary?.total_jobs ?? "—").toLocaleString();
     statAvgDays.textContent     = data.summary?.avg_days_to_hire != null
       ? data.summary.avg_days_to_hire + "d"
       : "—";
+
+    // "Closed in Period" — count of filled cycles in the full filtered result
+    // Use summary from API (all pages, not just current page)
+    const closedInPeriod = data.summary?.closed_in_period ?? 0;
+    document.getElementById("stat-closed-period").textContent = closedInPeriod.toLocaleString();
 
     // Populate filter dropdowns
     populateSelect("f-region",  data.filter_options?.regions);
@@ -127,7 +128,6 @@ function renderTable(cycles) {
       <td>${openedFmt}</td>
       <td>${cycleIsOpen ? '<span style="color:var(--status-open);font-size:.75rem">● Open</span>' : closedFmt}</td>
       <td class="cell-days">${daysFmt}</td>
-      <td class="cell-pct">${pct !== null ? pctBar(pct) : "—"}</td>
       <td>${statusBadge(status)}</td>
       <td><button class="btn--detail" onclick="openDetail('${esc(cycle.tracktik_post_id)}')">Detail</button></td>
     `;

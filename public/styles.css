@@ -101,7 +101,7 @@ a:hover { text-decoration: underline; }
 /* ── Summary Strip ───────────────────────────────────────── */
 .summary-strip {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 14px;
 }
 .stat-card {
@@ -116,6 +116,7 @@ a:hover { text-decoration: underline; }
   box-shadow: var(--shadow-card);
 }
 .stat-card--open   { border-top-color: var(--status-open); }
+.stat-card--closed { border-top-color: var(--status-closed); }
 .stat-card--accent { border-top-color: var(--gold); }
 .stat-label {
   font-size: .7rem;
@@ -132,6 +133,7 @@ a:hover { text-decoration: underline; }
   line-height: 1;
 }
 .stat-card--open   .stat-value { color: var(--status-open); }
+.stat-card--closed .stat-value { color: var(--status-closed); }
 .stat-card--accent .stat-value { color: var(--gold-dark); }
 
 /* ── Filter Bar ──────────────────────────────────────────── */

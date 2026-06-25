@@ -70,10 +70,13 @@ exports.handler = async (event) => {
       job_requisitions: jobMap.get(c.tracktik_post_id) || {},
     }));
 
-    // ── Stats ─────────────────────────────────────────────────
+    // Summary stats
     const filledDays   = allCycles.filter(c => c.days_to_hire !== null).map(c => parseFloat(c.days_to_hire));
     const avgDays      = filledDays.length > 0 ? parseFloat((filledDays.reduce((a,b)=>a+b,0)/filledDays.length).toFixed(1)) : null;
     const filteredJobs = [...new Set(allCycles.map(c => c.tracktik_post_id))].map(id => jobMap.get(id)).filter(Boolean);
+
+    // Closed in Period = cycles that have a closed_at value (were filled) in the filtered set
+    const closedInPeriod = allCycles.filter(c => c.closed_at !== null && c.closed_at !== undefined).length;
 
     // ── Filter options ────────────────────────────────────────
     const fo     = filterResult.data || [];
@@ -86,10 +89,11 @@ exports.handler = async (event) => {
         cycles: shapedCycles,
         pagination: { page: pageNum, per_page: limit, total, total_pages: Math.ceil(total / limit) },
         summary: {
-          total_jobs:       filteredJobs.length,
-          open_jobs:        filteredJobs.filter(j => j.current_status === "open").length,
-          total_cycles:     total,
-          avg_days_to_hire: avgDays,
+          total_jobs:        filteredJobs.length,
+          open_jobs:         filteredJobs.filter(j => j.current_status === "open").length,
+          total_cycles:      total,
+          avg_days_to_hire:  avgDays,
+          closed_in_period:  closedInPeriod,
         },
         filter_options: {
           regions:           unique("region"),
