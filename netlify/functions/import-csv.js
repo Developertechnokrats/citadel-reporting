@@ -250,6 +250,35 @@ exports.handler = async (event) => {
         .reduce((s,c) => s + c.days_to_hire, 0);
 
       cycles.forEach((c, i) => {
+        // ── GHL WINS rule ──────────────────────────────────────
+        // Skip this CSV cycle if ANY GHL cycle already covers it:
+        //   1. Open dates within 24 hours (same event, slightly different timestamps)
+        //   2. CSV cycle's open date falls WITHIN a GHL closed cycle's range
+        //      (e.g. GHL: Jun 11→20, CSV open: Jun 18 — same cycle, GHL wins)
+        const coveredByGHL = ghlCycles.some(ghl => {
+          if (!c.opened_at) return false;
+          const csvOpen  = c.opened_at.getTime();
+          const ghlOpen  = new Date(ghl.opened_at).getTime();
+          const ghlClose = ghl.closed_at ? new Date(ghl.closed_at).getTime() : null;
+
+          // Rule 1: open dates within 24 hours
+          if (Math.abs(csvOpen - ghlOpen) <= 24 * 60 * 60 * 1000) return true;
+
+          // Rule 2: CSV open falls INSIDE a closed GHL cycle's window
+          if (ghlClose && csvOpen >= ghlOpen && csvOpen <= ghlClose) return true;
+
+          // Rule 3: GHL has an open cycle and CSV also wants to add an open cycle
+          // for the same job — never add a duplicate open cycle
+          if (ghl.is_open && c.reason === "still_open") return true;
+
+          return false;
+        });
+
+        if (coveredByGHL) {
+          // GHL wins — skip this CSV cycle entirely
+          return;
+        }
+
         const cycleNum = maxGhlCycle + i + 1;
         const pct = (c.reason === "filled" && c.days_to_hire !== null && totalFilledDays > 0)
           ? round2((c.days_to_hire / totalFilledDays) * 100)
@@ -284,9 +313,9 @@ exports.handler = async (event) => {
           });
         }
 
-        if (c.reason === "filled")     filledCount++;
-        else if (c.reason === "withdrawn") withdrawnCount++;
-        else openCount++;
+        if (c.reason === "filled")          filledCount++;
+        else if (c.reason === "withdrawn")  withdrawnCount++;
+        else                                openCount++;
       });
     }
 
