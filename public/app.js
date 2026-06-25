@@ -112,12 +112,24 @@ function renderTable(cycles) {
     const job = cycle.job_requisitions || {};
     const tr = document.createElement("tr");
 
-    const openedFmt  = cycle.opened_at  ? fmtDate(cycle.opened_at)  : "—";
-    const closedFmt  = cycle.closed_at  ? fmtDate(cycle.closed_at)  : "—";
-    const daysFmt    = cycle.days_to_hire != null ? Number(cycle.days_to_hire).toFixed(1) + "d" : "—";
-    const pct        = cycle.pct_time_to_hire != null ? Number(cycle.pct_time_to_hire).toFixed(1) : null;
-    const status     = job.current_status || "created";
+    const openedFmt   = cycle.opened_at  ? fmtDate(cycle.opened_at)  : "—";
+    const closedFmt   = cycle.closed_at  ? fmtDate(cycle.closed_at)  : "—";
+    const daysFmt     = cycle.days_to_hire != null ? Number(cycle.days_to_hire).toFixed(1) + "d" : "—";
     const cycleIsOpen = cycle.is_open;
+    const jobStatus   = job.current_status || "created";
+
+    // Show cycle status. If this cycle is closed but the job is currently
+    // open (reopened later), show both badges so the client knows the
+    // full picture: "Closed (this cycle) + Open (currently)"
+    let statusCell;
+    if (!cycleIsOpen && jobStatus === "open") {
+      // Cycle was closed but job is open again — show both
+      statusCell = statusBadge("closed") + " " + statusBadge("open");
+    } else if (!cycleIsOpen) {
+      statusCell = statusBadge("closed");
+    } else {
+      statusCell = statusBadge("open");
+    }
 
     tr.innerHTML = `
       <td><span class="cell-id">${esc(cycle.tracktik_post_id)}</span></td>
@@ -128,7 +140,7 @@ function renderTable(cycles) {
       <td>${openedFmt}</td>
       <td>${cycleIsOpen ? '<span style="color:var(--status-open);font-size:.75rem">● Open</span>' : closedFmt}</td>
       <td class="cell-days">${daysFmt}</td>
-      <td>${statusBadge(status)}</td>
+      <td>${statusCell}</td>
       <td><button class="btn--detail" onclick="openDetail('${esc(cycle.tracktik_post_id)}')">Detail</button></td>
     `;
     tableBody.appendChild(tr);
