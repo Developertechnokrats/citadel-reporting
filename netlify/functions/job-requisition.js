@@ -9,6 +9,18 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY  // use service_role key for full access
 );
 
+// ── Helpers ──────────────────────────────────────────────────
+// Convert snake_case or lowercase names to Title Case
+// e.g. "heather_jordan" → "Heather Jordan"
+//      "jeff_patton"    → "Jeff Patton"
+function toTitleCase(str) {
+  if (!str || typeof str !== "string") return str;
+  return str
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, c => c.toUpperCase())
+    .trim();
+}
+
 // ── Field mapper: GHL JSON → DB columns ─────────────────────
 function mapPayloadToRecord(payload) {
   return {
@@ -20,7 +32,7 @@ function mapPayloadToRecord(payload) {
     city_of_site_location:         payload["City of the Site Location"],
     disqualifying_questions:       payload["Disqualifying Questions"],
     employment_status:             payload["Employment Status"],
-    hiring_manager:                payload["Hiring Manager"],
+    hiring_manager:                toTitleCase(payload["Hiring Manager"]),
     hr_approval_status:            payload["HR Approval Status"],
     in_person_interview_address:   payload["In-Person Interview Physical Address"],
     industry:                      payload["Industry"],

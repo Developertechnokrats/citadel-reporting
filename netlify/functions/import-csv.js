@@ -60,13 +60,14 @@ function normalizeOfficerType(v) {
 
 function normalizeManager(name) {
   if (!name) return null;
+  // Known specific fixes
   const fixes = {
-    "brandon soll":                  "Brandon Soll",
-    "heather jordan":                "Heather Jordan",
-    "kaithlyn antolic":              "Kaitlyn Antolic",
-    "spencer lane, heather jordan":  "Spencer Lane",
+    "spencer lane, heather jordan": "Spencer Lane",
   };
-  return fixes[name.trim().toLowerCase()] || name.trim();
+  const key = name.trim().toLowerCase().replace(/_/g, " ");
+  if (fixes[key]) return fixes[key];
+  // Convert any snake_case or lowercase to Title Case automatically
+  return name.trim().replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
 }
 
 // ── Cycle detection ───────────────────────────────────────────
@@ -230,7 +231,7 @@ exports.handler = async (event) => {
       // Check for discrepancies
       const notes = [];
       if (cycles.some(c => c.days_to_hire !== null && c.days_to_hire < 1))
-        notes.push("cycle < 1 day");
+        notes.push("cycle < 1 day — verify data");
       for (const r of groupRows) {
         if ((r["Hiring Manager"]||"").includes(","))
           notes.push(`combined manager: '${r["Hiring Manager"]}'`);
