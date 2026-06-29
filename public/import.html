@@ -113,16 +113,120 @@
     .btn--danger { background:var(--status-closed-bg); color:var(--status-closed); border:1px solid var(--status-closed); }
     .import-actions { margin-top:18px; display:flex; gap:10px; align-items:center; }
   </style>
+
+  <style id="login-styles">
+    .login-gate {
+      position: fixed;
+      inset: 0;
+      background: var(--bg-page);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .login-box {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-top: 3px solid var(--gold);
+      border-radius: var(--radius-lg);
+      padding: 36px 32px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.12);
+    }
+    .login-logo {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    .login-logo img { height: 36px; }
+    .login-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+      text-align: center;
+    }
+    .login-subtitle {
+      font-size: .8rem;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+      text-align: center;
+    }
+    .login-field { margin-bottom: 16px; }
+    .login-field label {
+      display: block;
+      font-size: .75rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 5px;
+    }
+    .login-field input {
+      width: 100%;
+      background: var(--bg-card-2);
+      border: 1px solid var(--border-mid);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-size: .9rem;
+      font-family: var(--font-sans);
+      padding: 10px 12px;
+      outline: none;
+      transition: border-color .15s;
+    }
+    .login-field input:focus { border-color: var(--gold); }
+    .login-btn {
+      width: 100%;
+      padding: 11px;
+      background: var(--gold);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-size: .9rem;
+      font-weight: 700;
+      letter-spacing: .04em;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: opacity .15s;
+    }
+    .login-btn:hover { opacity: .88; }
+    .login-error {
+      background: var(--status-closed-bg);
+      color: var(--status-closed);
+      border: 1px solid;
+      border-radius: var(--radius-sm);
+      padding: 8px 12px;
+      font-size: .8rem;
+      margin-top: 12px;
+      text-align: center;
+      display: none;
+    }
+  </style>
 </head>
 <body>
+  
+  <!-- ── Login Gate ─────────────────────────────────────── -->
+  <div class="login-gate" id="login-gate">
+    <div class="login-box">
+      <div class="login-logo" id="login-logo"></div>
+      <div class="login-title">Import Data Access</div>
+      <div class="login-subtitle">Enter your credentials to continue</div>
+      <div class="login-field">
+        <label for="login-user">Username</label>
+        <input type="text" id="login-user" placeholder="Username" autocomplete="username" />
+      </div>
+      <div class="login-field">
+        <label for="login-pass">Password</label>
+        <input type="password" id="login-pass" placeholder="Password" autocomplete="current-password" />
+      </div>
+      <button class="login-btn" id="login-btn">Sign In</button>
+      <div class="login-error" id="login-error">Incorrect username or password.</div>
+    </div>
+  </div>
   <header class="site-header">
     <div class="header-inner">
       <div class="header-brand"></div>
       <nav class="header-nav">
         <a href="/" class="nav-link">Dashboard</a>
-        <a href="/jobs.html" class="nav-link">All Jobs</a>
-        <a href="/reports.html" class="nav-link">Reports</a>
-        <a href="/region-report.html" class="nav-link">Region Report</a>
         <a href="/import.html" class="nav-link active">Import Data</a>
       </nav>
     </div>
@@ -414,6 +518,67 @@
       } catch(e) { undoWrap.innerHTML='<p style="color:var(--status-closed);font-size:.82rem">Failed: '+esc(e.message)+'</p>'; }
     }
     loadUndoInfo();
+  </script>
+
+  <script>
+    (function() {
+      // Simple session-based auth gate
+      var SESSION_KEY = 'citadel_import_auth';
+
+      function checkAuth() {
+        return sessionStorage.getItem(SESSION_KEY) === 'granted';
+      }
+
+      function showGate(show) {
+        var gate = document.getElementById('login-gate');
+        if (gate) gate.style.display = show ? 'flex' : 'none';
+      }
+
+      // Inject logo into login box
+      fetch('/index.html').then(function(r){ return r.text(); }).then(function(html){
+        var m = html.match(/src="(data:image\/png;base64,[^"]+)"/);
+        if (m) {
+          document.getElementById('login-logo').innerHTML =
+            '<img src="' + m[1] + '" alt="Citadel" style="height:36px">';
+        }
+      });
+
+      // If already authenticated this session, hide gate immediately
+      if (checkAuth()) {
+        showGate(false);
+      } else {
+        showGate(true);
+        // Prevent scrolling while gate is shown
+        document.body.style.overflow = 'hidden';
+      }
+
+      function attemptLogin() {
+        var user = document.getElementById('login-user').value.trim();
+        var pass = document.getElementById('login-pass').value;
+        var err  = document.getElementById('login-error');
+
+        // Credentials check
+        if (user === 'Jdidieu' && pass === 'aOKc&YL3DP4n') {
+          sessionStorage.setItem(SESSION_KEY, 'granted');
+          document.body.style.overflow = '';
+          showGate(false);
+          err.style.display = 'none';
+        } else {
+          err.style.display = 'block';
+          document.getElementById('login-pass').value = '';
+          document.getElementById('login-pass').focus();
+        }
+      }
+
+      document.getElementById('login-btn').addEventListener('click', attemptLogin);
+
+      // Allow Enter key to submit
+      ['login-user','login-pass'].forEach(function(id) {
+        document.getElementById(id).addEventListener('keydown', function(e) {
+          if (e.key === 'Enter') attemptLogin();
+        });
+      });
+    })();
   </script>
 </body>
 </html>
