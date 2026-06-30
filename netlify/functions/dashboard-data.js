@@ -13,10 +13,10 @@
 //      "Closed (to date)" instead, not here).
 //      Answers: "How many jobs are STILL open from this window?"
 //
-//   3. "Closed (to date)" — of the STRICT "Opened in Period" set, how
-//      many have since closed — even if the close date is outside
-//      the window. (Example: opened Jun 18 inside a Jun13-19 filter,
-//      closed Jun 25 outside it — still counts as closed.)
+//   3. "Closed in Period" — distinct jobs where closed_at falls
+//      within the date range, REGARDLESS of when they opened. This
+//      is fully independent of "Opened in Period" — a job opened
+//      weeks ago that closes during this window still counts here.
 //
 //   4. "Avg Days to Hire" — based on the closed cycles counted in #3.
 
@@ -92,9 +92,19 @@ exports.handler = async (event) => {
 
     const openedInPeriod = new Set(strictCycles.map(c => c.tracktik_post_id)).size;
 
-    // ── Metric 3: "Closed (to date)" — of the strict set, has closed_at at all ──
-    const closedCycles = strictCycles.filter(c => c.closed_at !== null);
-    const closedCount  = new Set(closedCycles.map(c => c.tracktik_post_id)).size;
+    // ── Metric 3: "Closed in Period" — closed_at falls in range,
+    //     independent of when the job opened ─────────────────────
+    const closedCycles = hasPeriod
+      ? allCycles.filter(c => {
+          if (!c.closed_at) return false;
+          const closedAt = new Date(c.closed_at);
+          if (fromIso && closedAt < new Date(fromIso)) return false;
+          if (toIso   && closedAt > new Date(toIso))   return false;
+          return true;
+        })
+      : allCycles.filter(c => c.closed_at !== null);
+
+    const closedCount = new Set(closedCycles.map(c => c.tracktik_post_id)).size;
 
     const filledDays = closedCycles.filter(c => c.days_to_hire !== null).map(c => parseFloat(c.days_to_hire));
     const avgDays = filledDays.length > 0
@@ -118,12 +128,11 @@ exports.handler = async (event) => {
 
     const activeInPeriod = new Set(activeCycles.map(c => c.tracktik_post_id)).size;
 
-    // ── Table: show the UNION of strict + active cycles ──────────
-    // (active is a superset of strict in almost all cases, but using
-    // a Map keyed by cycle id avoids any duplicate rows)
+    // ── Table: show the UNION of strict (opened) + active (still open) + closed-in-period ──
     const combinedMap = new Map();
     for (const c of activeCycles) combinedMap.set(c.id, c);
     for (const c of strictCycles) combinedMap.set(c.id, c);
+    for (const c of closedCycles) combinedMap.set(c.id, c);
     const combinedCycles = [...combinedMap.values()].sort(
       (a, b) => new Date(b.opened_at) - new Date(a.opened_at)
     );
