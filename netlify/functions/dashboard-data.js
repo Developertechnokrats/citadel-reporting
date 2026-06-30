@@ -5,13 +5,13 @@
 //   1. "Opened in Period" — strict: cycle.opened_at falls in range.
 //      Answers: "How many NEW jobs were posted this window?"
 //
-//   2. "Active During Period" — overlap logic: the cycle was open at
-//      ANY point during the window, regardless of when it actually
-//      opened or closed. A job opened May 9 and still open today
-//      WILL show up here if your filter includes any day it was open.
-//      Formula: opened_at <= period_to
-//               AND (closed_at IS NULL OR closed_at >= period_from)
-//      Answers: "How many jobs were open/active during this window?"
+//   2. "Active During Period" — only jobs STILL OPEN today (is_open
+//      = true) that were already open on or before the end of the
+//      filter window. This deliberately EXCLUDES jobs that have
+//      since closed — even if they overlapped the period — to avoid
+//      confusion (a closed job belongs to "Opened in Period" /
+//      "Closed (to date)" instead, not here).
+//      Answers: "How many jobs are STILL open from this window?"
 //
 //   3. "Closed (to date)" — of the STRICT "Opened in Period" set, how
 //      many have since closed — even if the close date is outside
@@ -101,19 +101,20 @@ exports.handler = async (event) => {
       ? parseFloat((filledDays.reduce((a,b)=>a+b,0)/filledDays.length).toFixed(1))
       : null;
 
-    // ── Metric 2: "Active During Period" — overlap logic ─────────
-    // opened_at <= period_to  AND  (closed_at IS NULL OR closed_at >= period_from)
+    // ── Metric 2: "Active During Period" — STILL OPEN today ──────
+    // Only jobs that are currently open (is_open = true) AND were
+    // already open on or before the end of the filter window.
+    // This deliberately EXCLUDES jobs that have since closed, even
+    // if they overlapped the period — those belong to "Opened in
+    // Period" / "Closed (to date)" instead, to avoid confusion.
     const activeCycles = hasPeriod
       ? allCycles.filter(c => {
+          if (!c.is_open) return false; // must still be open today
           const openedAt = new Date(c.opened_at);
           if (toIso && openedAt > new Date(toIso)) return false; // opened after window ends
-          if (c.closed_at) {
-            const closedAt = new Date(c.closed_at);
-            if (fromIso && closedAt < new Date(fromIso)) return false; // closed before window starts
-          }
           return true;
         })
-      : allCycles;
+      : allCycles.filter(c => c.is_open);
 
     const activeInPeriod = new Set(activeCycles.map(c => c.tracktik_post_id)).size;
 
