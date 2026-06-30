@@ -1,3 +1,25 @@
+// netlify/functions/dashboard-data.js
+//
+// FOUR metrics, all anchored to the SAME date range (Opened From/To):
+//
+//   1. "Opened in Period" — strict: cycle.opened_at falls in range.
+//      Answers: "How many NEW jobs were posted this window?"
+//
+//   2. "Active During Period" — overlap logic: the cycle was open at
+//      ANY point during the window, regardless of when it actually
+//      opened or closed. A job opened May 9 and still open today
+//      WILL show up here if your filter includes any day it was open.
+//      Formula: opened_at <= period_to
+//               AND (closed_at IS NULL OR closed_at >= period_from)
+//      Answers: "How many jobs were open/active during this window?"
+//
+//   3. "Closed (to date)" — of the STRICT "Opened in Period" set, how
+//      many have since closed — even if the close date is outside
+//      the window. (Example: opened Jun 18 inside a Jun13-19 filter,
+//      closed Jun 25 outside it — still counts as closed.)
+//
+//   4. "Avg Days to Hire" — based on the closed cycles counted in #3.
+
 const { createClient } = require("@supabase/supabase-js");
 
 const supabase = createClient(
@@ -19,9 +41,12 @@ exports.handler = async (event) => {
 
   const pageNum = Math.max(1, parseInt(page));
   const limit   = Math.min(100, Math.max(1, parseInt(per_page)));
+  const hasPeriod = !!(date_from || date_to);
+  const fromIso = date_from ? date_from + "T00:00:00.000Z" : null;
+  const toIso   = date_to   ? date_to   + "T23:59:59.999Z" : null;
 
   try {
-    // ── Query 1: jobs ─────────────────────────────────────────
+    // ── Query 1: jobs (apply job-level filters) ────────────────
     let jobQuery = supabase
       .from("job_requisitions")
       .select("tracktik_post_id, site_name_position_shift, region, city_of_site_location, hiring_manager, officer_type, current_status, total_cycles, tracktik_site_id, ghl_id, advertised_pay_rate, first_seen_at");
@@ -33,7 +58,8 @@ exports.handler = async (event) => {
     if (officer_type)     jobQuery = jobQuery.ilike("officer_type", `%${officer_type}%`);
     if (tracktik_site_id) jobQuery = jobQuery.ilike("tracktik_site_id", `%${tracktik_site_id}%`);
 
-    // ── Query 2: cycles ───────────────────────────────────────
+    // ── Query 2: ALL cycles for matched jobs (filtered in JS so we
+    //     can compute multiple metrics from a single fetch) ──────
     let cycleQuery = supabase
       .from("job_cycles")
       .select("id, tracktik_post_id, cycle_number, opened_at, closed_at, days_to_hire, pct_time_to_hire, is_open")
@@ -41,11 +67,7 @@ exports.handler = async (event) => {
 
     if (tracktik_post_id) cycleQuery = cycleQuery.ilike("tracktik_post_id", `%${tracktik_post_id.trim()}%`);
 
-    // Date filter — date input always gives YYYY-MM-DD
-    if (date_from) cycleQuery = cycleQuery.gte("opened_at", date_from + "T00:00:00.000Z");
-    if (date_to)   cycleQuery = cycleQuery.lte("opened_at", date_to   + "T23:59:59.999Z");
-
-    // ── Query 3: filter options ───────────────────────────────
+    // ── Query 3: filter options ─────────────────────────────────
     const filterQuery = supabase
       .from("job_requisitions")
       .select("region, city_of_site_location, hiring_manager, officer_type, tracktik_site_id");
@@ -55,14 +77,58 @@ exports.handler = async (event) => {
     if (jobResult.error)   throw new Error(jobResult.error.message);
     if (cycleResult.error) throw new Error(cycleResult.error.message);
 
-    // ── Join ──────────────────────────────────────────────────
     const jobMap = new Map((jobResult.data || []).map(j => [j.tracktik_post_id, j]));
-
-    // Keep only cycles whose job passes the job-level filters
     const allCycles = (cycleResult.data || []).filter(c => jobMap.has(c.tracktik_post_id));
 
-    const total       = allCycles.length;
-    const pagedCycles = allCycles.slice((pageNum - 1) * limit, (pageNum - 1) * limit + limit);
+    // ── Metric 1: "Opened in Period" — strict, cycle.opened_at in range ──
+    const strictCycles = hasPeriod
+      ? allCycles.filter(c => {
+          const openedAt = new Date(c.opened_at);
+          if (fromIso && openedAt < new Date(fromIso)) return false;
+          if (toIso   && openedAt > new Date(toIso))   return false;
+          return true;
+        })
+      : allCycles;
+
+    const openedInPeriod = new Set(strictCycles.map(c => c.tracktik_post_id)).size;
+
+    // ── Metric 3: "Closed (to date)" — of the strict set, has closed_at at all ──
+    const closedCycles = strictCycles.filter(c => c.closed_at !== null);
+    const closedCount  = new Set(closedCycles.map(c => c.tracktik_post_id)).size;
+
+    const filledDays = closedCycles.filter(c => c.days_to_hire !== null).map(c => parseFloat(c.days_to_hire));
+    const avgDays = filledDays.length > 0
+      ? parseFloat((filledDays.reduce((a,b)=>a+b,0)/filledDays.length).toFixed(1))
+      : null;
+
+    // ── Metric 2: "Active During Period" — overlap logic ─────────
+    // opened_at <= period_to  AND  (closed_at IS NULL OR closed_at >= period_from)
+    const activeCycles = hasPeriod
+      ? allCycles.filter(c => {
+          const openedAt = new Date(c.opened_at);
+          if (toIso && openedAt > new Date(toIso)) return false; // opened after window ends
+          if (c.closed_at) {
+            const closedAt = new Date(c.closed_at);
+            if (fromIso && closedAt < new Date(fromIso)) return false; // closed before window starts
+          }
+          return true;
+        })
+      : allCycles;
+
+    const activeInPeriod = new Set(activeCycles.map(c => c.tracktik_post_id)).size;
+
+    // ── Table: show the UNION of strict + active cycles ──────────
+    // (active is a superset of strict in almost all cases, but using
+    // a Map keyed by cycle id avoids any duplicate rows)
+    const combinedMap = new Map();
+    for (const c of activeCycles) combinedMap.set(c.id, c);
+    for (const c of strictCycles) combinedMap.set(c.id, c);
+    const combinedCycles = [...combinedMap.values()].sort(
+      (a, b) => new Date(b.opened_at) - new Date(a.opened_at)
+    );
+
+    const total       = combinedCycles.length;
+    const pagedCycles = combinedCycles.slice((pageNum - 1) * limit, (pageNum - 1) * limit + limit);
 
     const shapedCycles = pagedCycles.map(c => ({
       ...c,
@@ -70,15 +136,7 @@ exports.handler = async (event) => {
       job_requisitions: jobMap.get(c.tracktik_post_id) || {},
     }));
 
-    // Summary stats
-    const filledDays   = allCycles.filter(c => c.days_to_hire !== null).map(c => parseFloat(c.days_to_hire));
-    const avgDays      = filledDays.length > 0 ? parseFloat((filledDays.reduce((a,b)=>a+b,0)/filledDays.length).toFixed(1)) : null;
-    const filteredJobs = [...new Set(allCycles.map(c => c.tracktik_post_id))].map(id => jobMap.get(id)).filter(Boolean);
-
-    // Closed in Period = cycles that have a closed_at value (were filled) in the filtered set
-    const closedInPeriod = allCycles.filter(c => c.closed_at !== null && c.closed_at !== undefined).length;
-
-    // ── Filter options ────────────────────────────────────────
+    // ── Filter options ────────────────────────────────────────────
     const fo     = filterResult.data || [];
     const unique = (key) => [...new Set(fo.map(r => r[key]).filter(Boolean))].sort();
 
@@ -89,11 +147,11 @@ exports.handler = async (event) => {
         cycles: shapedCycles,
         pagination: { page: pageNum, per_page: limit, total, total_pages: Math.ceil(total / limit) },
         summary: {
-          total_jobs:        filteredJobs.length,
-          open_jobs:         filteredJobs.filter(j => j.current_status === "open").length,
-          total_cycles:      total,
-          avg_days_to_hire:  avgDays,
-          closed_in_period:  closedInPeriod,
+          total_jobs:         openedInPeriod,
+          opened_in_period:   openedInPeriod,
+          active_in_period:   activeInPeriod,
+          closed_in_period:   closedCount,
+          avg_days_to_hire:   avgDays,
         },
         filter_options: {
           regions:           unique("region"),

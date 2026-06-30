@@ -101,7 +101,7 @@ a:hover { text-decoration: underline; }
 /* ── Summary Strip ───────────────────────────────────────── */
 .summary-strip {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 14px;
 }
 .stat-card {

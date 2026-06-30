@@ -15,7 +15,9 @@ const mainTable    = document.getElementById("main-table");
 const pagination   = document.getElementById("pagination");
 const resultsCount = document.getElementById("results-count");
 
-const statTotalJobs    = document.getElementById("stat-total-jobs");
+const statOpenedPeriod = document.getElementById("stat-opened-period");
+const statActivePeriod = document.getElementById("stat-active-period");
+const statClosedPeriod = document.getElementById("stat-closed-period");
 const statAvgDays      = document.getElementById("stat-avg-days");
 
 const modalOverlay  = document.getElementById("modal-overlay");
@@ -24,12 +26,9 @@ const modalContent  = document.getElementById("modal-content");
 
 // ── Filters ───────────────────────────────────────────────
 function getFilters() {
-  // flatpickr stores YYYY-MM-DD in the original input, MM/DD/YYYY in the altInput
-  // Reading .value from the original input always gives YYYY-MM-DD
-  const dateFromEl = document.getElementById("f-date-from");
-  const dateToEl   = document.getElementById("f-date-to");
-  const dateFrom   = dateFromEl._flatpickr ? dateFromEl.value : dateFromEl.value;
-  const dateTo     = dateToEl._flatpickr   ? dateToEl.value   : dateToEl.value;
+  // flatpickr stores YYYY-MM-DD in the original input
+  const dateFrom = document.getElementById("f-date-from").value;
+  const dateTo   = document.getElementById("f-date-to").value;
 
   return {
     tracktik_post_id: document.getElementById("f-tracktik").value.trim(),
@@ -61,16 +60,13 @@ async function loadDashboard() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 
-    // Summary stats
-    statTotalJobs.textContent   = (data.summary?.total_jobs ?? "—").toLocaleString();
-    statAvgDays.textContent     = data.summary?.avg_days_to_hire != null
+    // Summary stats — two independent counts from the same period
+    statOpenedPeriod.textContent = (data.summary?.opened_in_period ?? 0).toLocaleString();
+    statActivePeriod.textContent = (data.summary?.active_in_period ?? 0).toLocaleString();
+    statClosedPeriod.textContent = (data.summary?.closed_in_period ?? 0).toLocaleString();
+    statAvgDays.textContent      = data.summary?.avg_days_to_hire != null
       ? data.summary.avg_days_to_hire + "d"
       : "—";
-
-    // "Closed in Period" — count of filled cycles in the full filtered result
-    // Use summary from API (all pages, not just current page)
-    const closedInPeriod = data.summary?.closed_in_period ?? 0;
-    document.getElementById("stat-closed-period").textContent = closedInPeriod.toLocaleString();
 
     // Populate filter dropdowns
     populateSelect("f-region",  data.filter_options?.regions);
@@ -443,10 +439,10 @@ document.getElementById("btn-reset").addEventListener("click", () => {
   ["f-tracktik","f-site-id","f-status","f-region","f-city","f-manager","f-officer"]
     .forEach(id => { document.getElementById(id).value = ""; });
   // Clear flatpickr date pickers
-  if (document.getElementById("f-date-from")._flatpickr)
-    document.getElementById("f-date-from")._flatpickr.clear();
-  if (document.getElementById("f-date-to")._flatpickr)
-    document.getElementById("f-date-to")._flatpickr.clear();
+  ["f-date-from","f-date-to"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el._flatpickr) el._flatpickr.clear();
+  });
   currentPage = 1;
   loadDashboard();
 });

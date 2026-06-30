@@ -29,17 +29,21 @@
 
     <!-- Summary Cards -->
     <section class="summary-strip">
-      <div class="stat-card">
-        <span class="stat-label">Total Jobs</span>
-        <span class="stat-value" id="stat-total-jobs">—</span>
+      <div class="stat-card stat-card--open">
+        <span class="stat-label">Opened in Period</span>
+        <span class="stat-value" id="stat-opened-period">—</span>
+      </div>
+      <div class="stat-card stat-card--accent">
+        <span class="stat-label">Active During Period</span>
+        <span class="stat-value" id="stat-active-period">—</span>
+      </div>
+      <div class="stat-card stat-card--closed">
+        <span class="stat-label">Closed (to date)</span>
+        <span class="stat-value" id="stat-closed-period">—</span>
       </div>
       <div class="stat-card stat-card--accent">
         <span class="stat-label">Avg Days to Hire</span>
         <span class="stat-value" id="stat-avg-days">—</span>
-      </div>
-      <div class="stat-card stat-card--closed">
-        <span class="stat-label">Closed in Period</span>
-        <span class="stat-value" id="stat-closed-period">—</span>
       </div>
     </section>
 
@@ -113,6 +117,9 @@
           <button id="btn-reset" class="btn btn--ghost">Reset</button>
           <span class="results-count" id="results-count"></span>
         </div>
+        <p style="margin-top:10px;font-size:.78rem;color:var(--text-muted);">
+          <strong>Opened in Period</strong> = brand new postings this window. <strong>Active During Period</strong> = any job that was open at any point during this window, even if it opened before or closed after it (e.g. a job opened May 9 and still open today will show up if your filter includes any day in between). <strong>Closed (to date)</strong> counts jobs opened in this window that have since been filled, even if the fill date is outside it.
+        </p>
       </div>
     </section>
 
