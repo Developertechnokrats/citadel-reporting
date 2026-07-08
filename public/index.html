@@ -32,18 +32,76 @@
       <div class="stat-card stat-card--open">
         <span class="stat-label">Opened in Period</span>
         <span class="stat-value" id="stat-opened-period">—</span>
+        <div class="tt-wrap">
+          <div class="tt-icon">i</div>
+          <div class="tt-box">
+            <span class="tt-title">Opened in Period</span>
+            Unique jobs where a brand new hire cycle started within your selected date range (Opened From → Opened To).
+            <div class="tt-example">
+              <strong>Example: Filter 05/01 → 06/30</strong>
+              ✓ Job posted 05/15 — counted<br>
+              ✗ Job posted 04/20 — opened before window<br>
+              ✗ Job posted 05/04, closed 06/25 — not a new open
+            </div>
+          </div>
+        </div>
       </div>
+
       <div class="stat-card stat-card--accent">
         <span class="stat-label">Active During Period</span>
         <span class="stat-value" id="stat-active-period">—</span>
+        <div class="tt-wrap">
+          <div class="tt-icon">i</div>
+          <div class="tt-box">
+            <span class="tt-title">Active During Period</span>
+            Jobs that are STILL OPEN today and were already posted on or before your window's end date. Filled/closed jobs are excluded.
+            <div class="tt-example">
+              <strong>Example: Filter 05/01 → 06/30</strong>
+              ✓ Open since Apr 17, still open today — counted<br>
+              ✓ Opened May 4, still open today — counted<br>
+              ✗ Opened May 4, filled Jun 25 — already closed
+            </div>
+          </div>
+        </div>
       </div>
+
       <div class="stat-card stat-card--closed">
         <span class="stat-label">Closed in Period</span>
         <span class="stat-value" id="stat-closed-period">—</span>
+        <div class="tt-wrap">
+          <div class="tt-icon">i</div>
+          <div class="tt-box">
+            <span class="tt-title">Closed in Period</span>
+            Unique jobs whose fill/close date falls within your selected window — regardless of when the job was originally posted.
+            <div class="tt-example">
+              <strong>Example: Filter 05/01 → 06/30</strong>
+              ✓ Posted Apr 27, filled Jun 09 — counted<br>
+              ✓ Posted Jun 18, filled Jun 25 — counted<br>
+              ✗ Posted May 4, still open — not yet filled
+            </div>
+          </div>
+        </div>
       </div>
+
       <div class="stat-card stat-card--accent">
         <span class="stat-label">Avg Days to Hire</span>
         <span class="stat-value" id="stat-avg-days">—</span>
+        <div class="tt-wrap">
+          <div class="tt-icon">i</div>
+          <div class="tt-box">
+            <span class="tt-title">Avg Days to Hire</span>
+            Average days from a job's posted date to its fill date, for all jobs that closed within your selected window. Open jobs are not included.
+            <div class="tt-example">
+              <strong>How it's calculated:</strong>
+              Total days across all filled jobs<br>
+              ÷ Number of filled jobs<br><br>
+              <strong>Example:</strong><br>
+              3 jobs closed in 5d, 8d, 21d<br>
+              (5 + 8 + 21) ÷ 3 = <strong style="color:#B8962E">11.3d avg</strong><br><br>
+              A single long-running job (e.g. 56d) will raise the average significantly.
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 

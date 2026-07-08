@@ -534,3 +534,79 @@ span.flatpickr-weekday {
 .flatpickr-input[readonly] { cursor: pointer; }
 /* Alt input inherits filter-input styles */
 .flatpickr-input.flatpickr-input.form-control { display: none !important; }
+
+/* ── Stat Card Tooltips ──────────────────────────────────── */
+.stat-card { position: relative; }
+
+.tt-wrap {
+  position: absolute;
+  top: 12px; right: 12px;
+}
+
+.tt-icon {
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--bg-card-2); color: var(--text-muted);
+  font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  border: 1.5px solid var(--border-mid);
+  transition: background .15s, color .15s, border-color .15s;
+  user-select: none;
+}
+
+.tt-wrap:hover .tt-icon {
+  background: var(--gold);
+  color: #fff;
+  border-color: var(--gold);
+}
+
+.tt-box {
+  display: none;
+  position: absolute;
+  top: 28px; right: -6px;
+  width: 240px;
+  background: #1A1A1A;
+  color: #E0E0E0;
+  border-radius: 8px;
+  padding: 14px 16px;
+  font-size: 12px;
+  line-height: 1.65;
+  box-shadow: 0 8px 28px rgba(0,0,0,.35);
+  z-index: 999;
+}
+
+.tt-box::before {
+  content: '';
+  position: absolute;
+  top: -6px; right: 12px;
+  width: 12px; height: 12px;
+  background: #1A1A1A;
+  transform: rotate(45deg);
+  border-radius: 2px;
+}
+
+.tt-wrap:hover .tt-box { display: block; }
+
+.tt-title {
+  display: block;
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--gold);
+  margin-bottom: 8px;
+}
+
+.tt-example {
+  margin-top: 10px;
+  padding: 9px 11px;
+  background: rgba(255,255,255,.07);
+  border-radius: 5px;
+  font-size: 11px;
+  color: #bbb;
+  line-height: 1.8;
+}
+
+.tt-example strong {
+  color: #fff;
+  display: block;
+  margin-bottom: 4px;
+}
