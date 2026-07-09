@@ -62,7 +62,7 @@ async function loadDashboard() {
 
     // Summary stats — two independent counts from the same period
     statOpenedPeriod.textContent = (data.summary?.opened_in_period ?? 0).toLocaleString();
-    statActivePeriod.textContent = (data.summary?.active_in_period ?? 0).toLocaleString();
+    statActivePeriod.textContent = (data.summary?.total_touched_in_period ?? 0).toLocaleString();
     statClosedPeriod.textContent = (data.summary?.closed_in_period ?? 0).toLocaleString();
     statAvgDays.textContent      = data.summary?.avg_days_to_hire != null
       ? data.summary.avg_days_to_hire + "d"

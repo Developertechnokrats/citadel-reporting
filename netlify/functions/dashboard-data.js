@@ -5,13 +5,16 @@
 //   1. "Opened in Period" — strict: cycle.opened_at falls in range.
 //      Answers: "How many NEW jobs were posted this window?"
 //
-//   2. "Active During Period" — only jobs STILL OPEN today (is_open
-//      = true) that were already open on or before the end of the
-//      filter window. This deliberately EXCLUDES jobs that have
-//      since closed — even if they overlapped the period — to avoid
-//      confusion (a closed job belongs to "Opened in Period" /
-//      "Closed (to date)" instead, not here).
-//      Answers: "How many jobs are STILL open from this window?"
+//   2. "Total Job Req During Period" — counts TOUCH-EVENTS (cycle
+//      rows), NOT distinct tracktik_post_id — a deliberate departure
+//      from every other card on this dashboard. A cycle counts if:
+//        (is_open = true AND opened_at <= period_to)
+//        OR (opened_at falls within the period)
+//        OR (closed_at falls within the period)
+//      A job that closed and reopened within the same window (filled
+//      once, then reposted) has two real cycle rows, and both count,
+//      since each represents genuine hiring activity.
+//      Answers: "How many hiring events touched this window?"
 //
 //   3. "Closed in Period" — distinct jobs where closed_at falls
 //      within the date range, REGARDLESS of when they opened. This
@@ -111,26 +114,37 @@ exports.handler = async (event) => {
       ? parseFloat((filledDays.reduce((a,b)=>a+b,0)/filledDays.length).toFixed(1))
       : null;
 
-    // ── Metric 2: "Active During Period" — STILL OPEN today ──────
-    // Only jobs that are currently open (is_open = true) AND were
-    // already open on or before the end of the filter window.
-    // This deliberately EXCLUDES jobs that have since closed, even
-    // if they overlapped the period — those belong to "Opened in
-    // Period" / "Closed (to date)" instead, to avoid confusion.
-    const activeCycles = hasPeriod
+    // ── Metric 2: "Total Job Req During Period" — counts TOUCH-EVENTS
+    //     (cycle rows), not distinct tracktik_post_id. A job that closed
+    //     and reopened within the window has two real cycle rows, and
+    //     both represent genuine hiring activity, so both are counted.
+    //     This is a deliberate departure from every other card here.
+    const touchedCycles = hasPeriod
       ? allCycles.filter(c => {
-          if (!c.is_open) return false; // must still be open today
           const openedAt = new Date(c.opened_at);
-          if (toIso && openedAt > new Date(toIso)) return false; // opened after window ends
-          return true;
+          const closedAt = c.closed_at ? new Date(c.closed_at) : null;
+
+          // Condition A: currently open AND opened on/before window end
+          const isActiveAndOpenedBeforeEnd =
+            c.is_open === true && openedAt <= new Date(toIso);
+
+          // Condition B: opened DURING the window (regardless of current status)
+          const openedDuringWindow =
+            openedAt >= new Date(fromIso) && openedAt <= new Date(toIso);
+
+          // Condition C: closed DURING the window
+          const closedDuringWindow =
+            closedAt && closedAt >= new Date(fromIso) && closedAt <= new Date(toIso);
+
+          return isActiveAndOpenedBeforeEnd || openedDuringWindow || closedDuringWindow;
         })
-      : allCycles.filter(c => c.is_open);
+      : allCycles;
 
-    const activeInPeriod = new Set(activeCycles.map(c => c.tracktik_post_id)).size;
+    const totalTouchedInPeriod = touchedCycles.length;
 
-    // ── Table: show the UNION of strict (opened) + active (still open) + closed-in-period ──
+    // ── Table: show the UNION of strict (opened) + touched (overlap) + closed-in-period ──
     const combinedMap = new Map();
-    for (const c of activeCycles) combinedMap.set(c.id, c);
+    for (const c of touchedCycles) combinedMap.set(c.id, c);
     for (const c of strictCycles) combinedMap.set(c.id, c);
     for (const c of closedCycles) combinedMap.set(c.id, c);
     const combinedCycles = [...combinedMap.values()].sort(
@@ -159,7 +173,7 @@ exports.handler = async (event) => {
         summary: {
           total_jobs:         openedInPeriod,
           opened_in_period:   openedInPeriod,
-          active_in_period:   activeInPeriod,
+          total_touched_in_period: totalTouchedInPeriod,
           closed_in_period:   closedCount,
           avg_days_to_hire:   avgDays,
         },
