@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin — Citadel Dashboard</title>
+  <link rel="stylesheet" href="/styles.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.css"/>
+  <style>
+    /* ── Login Gate ─────────────────────────────── */
+    .login-gate{position:fixed;inset:0;background:var(--bg-page);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px}
+    .login-box{background:var(--bg-card);border:1px solid var(--border);border-top:3px solid var(--gold);border-radius:var(--radius-lg);padding:36px 32px;width:100%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.12)}
+    .login-title{font-size:1rem;font-weight:700;color:var(--text-primary);margin-bottom:4px;text-align:center}
+    .login-sub{font-size:.8rem;color:var(--text-muted);margin-bottom:24px;text-align:center}
+    .login-field{margin-bottom:16px}
+    .login-field label{display:block;font-size:.75rem;font-weight:600;color:var(--text-secondary);margin-bottom:5px}
+    .login-field input{width:100%;background:var(--bg-card-2);border:1px solid var(--border-mid);border-radius:var(--radius-sm);color:var(--text-primary);font-size:.9rem;font-family:var(--font-sans);padding:10px 12px;outline:none;transition:border-color .15s;box-sizing:border-box}
+    .login-field input:focus{border-color:var(--gold)}
+    .login-btn{width:100%;padding:11px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-sm);font-size:.9rem;font-weight:700;cursor:pointer;margin-top:8px;transition:opacity .15s}
+    .login-btn:hover{opacity:.88}
+    .login-err{background:var(--status-closed-bg);color:var(--status-closed);border:1px solid var(--status-closed);border-radius:var(--radius-sm);padding:8px 12px;font-size:.8rem;margin-top:12px;text-align:center;display:none}
+
+    /* ── Admin badge in header ──────────────────── */
+    .admin-badge{background:var(--gold);color:#fff;font-size:.65rem;font-weight:700;letter-spacing:.06em;padding:2px 8px;border-radius:10px;text-transform:uppercase;margin-left:8px;vertical-align:middle}
+
+    /* ── Tabs ───────────────────────────────────── */
+    .admin-tabs{display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:0;padding:0}
+    .admin-tab{padding:12px 20px;font-size:.82rem;font-weight:700;color:var(--text-muted);background:transparent;border:none;border-bottom:3px solid transparent;margin-bottom:-2px;cursor:pointer;transition:color .15s,border-color .15s;letter-spacing:.04em}
+    .admin-tab:hover{color:var(--text-primary)}
+    .admin-tab.active{color:var(--text-primary);border-bottom-color:var(--gold)}
+    .tab-panel{display:none;padding-top:20px}
+    .tab-panel.active{display:block}
+
+    /* ── Table edit btn ─────────────────────────── */
+    .btn--edit{padding:4px 12px;font-size:.75rem;font-weight:700;background:var(--bg-card-2);color:var(--gold);border:1px solid var(--gold);border-radius:var(--radius-sm);cursor:pointer;transition:background .15s}
+    .btn--edit:hover{background:var(--gold);color:#fff}
+
+    /* ── Edit Modal ─────────────────────────────── */
+    .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:none;align-items:center;justify-content:center;padding:20px}
+    .modal-overlay.open{display:flex}
+    .edit-modal{background:var(--bg-card);border-radius:var(--radius-lg);padding:28px;width:100%;max-width:680px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+    .modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+    .modal-header h2{font-size:.95rem;font-weight:700;color:var(--text-primary)}
+    .modal-close{background:none;border:none;font-size:1.4rem;color:var(--text-muted);cursor:pointer;line-height:1}
+    .modal-close:hover{color:var(--text-primary)}
+
+    /* cycle edit rows */
+    .cycle-rows{display:flex;flex-direction:column;gap:12px;margin-bottom:20px}
+    .cycle-row{background:var(--bg-card-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px}
+    .cycle-row-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+    .cycle-row-header span{font-size:.78rem;font-weight:700;color:var(--text-secondary)}
+    .cycle-fields{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+    .cycle-field label{display:block;font-size:.68rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+    .cycle-field input{width:100%;background:var(--bg-card);border:1px solid var(--border-mid);border-radius:var(--radius-sm);color:var(--text-primary);font-size:.82rem;font-family:var(--font-sans);padding:7px 10px;outline:none;transition:border-color .15s;box-sizing:border-box}
+    .cycle-field input:focus{border-color:var(--gold)}
+    .cycle-field input[readonly]{color:var(--gold-dark);background:var(--bg-page)}
+    .cycle-field-note{grid-column:1/-1}
+    .btn--del-cycle{padding:3px 10px;font-size:.72rem;font-weight:700;background:var(--status-closed-bg);color:var(--status-closed);border:1px solid var(--status-closed);border-radius:var(--radius-sm);cursor:pointer}
+    .btn--del-cycle:hover{background:var(--status-closed);color:#fff}
+
+    .add-cycle-btn{width:100%;padding:10px;background:transparent;border:1.5px dashed var(--border-mid);border-radius:var(--radius-sm);color:var(--text-muted);font-size:.82rem;cursor:pointer;transition:border-color .15s,color .15s}
+    .add-cycle-btn:hover{border-color:var(--gold);color:var(--gold)}
+
+    .modal-actions{display:flex;gap:10px;margin-top:20px;justify-content:flex-end}
+
+    /* ── Corrections history panel ──────────────── */
+    .corrections-list{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+    .correction-item{background:var(--bg-page);border:1px solid var(--border);border-left:3px solid var(--gold);border-radius:var(--radius-sm);padding:10px 14px;font-size:.78rem;color:var(--text-secondary)}
+    .correction-item .c-type{font-weight:700;color:var(--text-primary);text-transform:uppercase;font-size:.7rem;letter-spacing:.06em}
+    .correction-item .c-date{color:var(--text-muted);font-size:.72rem}
+
+    /* ── Bulk tab ───────────────────────────────── */
+    .bulk-format{background:var(--bg-page);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;font-family:var(--font-mono);font-size:.78rem;color:var(--text-secondary);margin-bottom:16px;white-space:pre}
+    .bulk-textarea{width:100%;min-height:160px;background:var(--bg-card-2);border:1px solid var(--border-mid);border-radius:var(--radius-sm);color:var(--text-primary);font-family:var(--font-mono);font-size:.8rem;padding:12px;resize:vertical;outline:none;box-sizing:border-box}
+    .bulk-textarea:focus{border-color:var(--gold)}
+    .bulk-result{margin-top:16px}
+    .bulk-row-result{font-size:.78rem;padding:4px 0;color:var(--text-secondary)}
+    .bulk-row-result.ok{color:var(--status-open)}
+    .bulk-row-result.err{color:var(--status-closed)}
+
+    /* status pill for correction type */
+    .tag{display:inline-block;padding:1px 7px;border-radius:10px;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+    .tag-edit{background:#E3F2FD;color:#1565C0}
+    .tag-add{background:#E8F5E9;color:#2E7D32}
+    .tag-del{background:#FFEBEE;color:#C62828}
+    .tag-bulk{background:#FFF8E1;color:#B8962E}
+  </style>
+</head>
+<body>
+
+  <!-- ── Login Gate ────────────────────────────── -->
+  <div class="login-gate" id="login-gate">
+    <div class="login-box">
+      <div style="text-align:center;margin-bottom:20px" id="admin-login-logo"></div>
+      <div class="login-title">Admin Access</div>
+      <div class="login-sub">Citadel Job Requisition Dashboard</div>
+      <div class="login-field"><label for="lg-user">Username</label><input type="text" id="lg-user" autocomplete="username"/></div>
+      <div class="login-field"><label for="lg-pass">Password</label><input type="password" id="lg-pass" autocomplete="current-password"/></div>
+      <button class="login-btn" id="lg-btn">Sign In</button>
+      <div class="login-err" id="lg-err">Incorrect username or password.</div>
+    </div>
+  </div>
+
+  <!-- ── Header ────────────────────────────────── -->
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="header-brand"></div>
+      <nav class="header-nav">
+        <a href="/" class="nav-link">Dashboard</a>
+        <a href="/import.html" class="nav-link">Import Data</a>
+        <a href="/admin.html" class="nav-link active">Admin <span class="admin-badge">Admin</span></a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="main-content">
+
+    <div class="admin-tabs">
+      <button class="admin-tab active" data-tab="cycles">Edit Cycles</button>
+      <button class="admin-tab" data-tab="bulk">Bulk Edit</button>
+      <button class="admin-tab" data-tab="history">Correction History</button>
+    </div>
+
+    <!-- ── TAB 1: Edit Cycles ──────────────────── -->
+    <div class="tab-panel active" id="tab-cycles">
+
+      <!-- Same filter bar as dashboard -->
+      <section class="filter-bar">
+        <div class="filter-bar-inner">
+          <h2 class="filter-heading">Filter Jobs</h2>
+          <div class="filter-grid">
+            <div class="filter-group">
+              <label class="filter-label" for="a-tracktik">TrackTik Post ID</label>
+              <input type="text" id="a-tracktik" class="filter-input" placeholder="e.g. P00017-UAPTA"/>
+            </div>
+            <div class="filter-group">
+              <label class="filter-label" for="a-status">Status</label>
+              <select id="a-status" class="filter-input">
+                <option value="">All Statuses</option>
+                <option value="open">Open</option>
+                <option value="closed">Closed</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label class="filter-label" for="a-date-from">Opened From</label>
+              <input type="text" id="a-date-from" class="filter-input" placeholder="MM/DD/YYYY" readonly/>
+            </div>
+            <div class="filter-group">
+              <label class="filter-label" for="a-date-to">Opened To</label>
+              <input type="text" id="a-date-to" class="filter-input" placeholder="MM/DD/YYYY" readonly/>
+            </div>
+            <div class="filter-group">
+              <label class="filter-label" for="a-region">Region</label>
+              <select id="a-region" class="filter-input"><option value="">All Regions</option></select>
+            </div>
+            <div class="filter-group">
+              <label class="filter-label" for="a-manager">Hiring Manager</label>
+              <select id="a-manager" class="filter-input"><option value="">All Managers</option></select>
+            </div>
+            <div class="filter-group">
+              <label class="filter-label" for="a-days-gt">Open Days &gt;</label>
+              <input type="number" id="a-days-gt" class="filter-input" placeholder="e.g. 20" min="0"/>
+            </div>
+          </div>
+          <div class="filter-actions">
+            <button class="btn btn--primary" id="a-apply">Apply Filters</button>
+            <button class="btn btn--ghost" id="a-reset">Reset</button>
+            <span class="results-count" id="a-count"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Jobs table -->
+      <section class="table-section">
+        <div class="table-wrap">
+          <table class="data-table" id="admin-table">
+            <thead>
+              <tr>
+                <th>TrackTik Post ID</th>
+                <th>Site / Position</th>
+                <th>Region</th>
+                <th>Hiring Manager</th>
+                <th>Cycle #</th>
+                <th>Opened</th>
+                <th>Closed</th>
+                <th>Days</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="admin-tbody">
+              <tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text-muted)">Apply filters to load jobs</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <!-- ── TAB 2: Bulk Edit ───────────────────── -->
+    <div class="tab-panel" id="tab-bulk">
+      <div style="max-width:760px">
+        <h3 style="font-size:.9rem;font-weight:700;color:var(--text-primary);margin-bottom:8px">Bulk Cycle Edit</h3>
+        <p style="font-size:.82rem;color:var(--text-muted);margin-bottom:16px">Paste CSV data below. One row per cycle. Leave <code>cycle_number</code> blank to add a new cycle. Leave <code>closed_at</code> blank for still-open cycles.</p>
+
+        <div class="bulk-format">tracktik_post_id,cycle_number,opened_at,closed_at,note
+CO4MP-FTO,1,05/04/2026,05/20/2026,Filled May 20 - team forgot to close
+CO4MP-FTO,2,05/22/2026,06/15/2026,Second hire cycle
+CO4MP-FTO,3,06/17/2026,,Currently open
+P00756-UAPT,1,06/12/2026,07/06/2026,Corrected close date</div>
+
+        <textarea class="bulk-textarea" id="bulk-csv" placeholder="Paste your CSV here..."></textarea>
+
+        <div style="margin-top:12px;display:flex;gap:10px;align-items:center">
+          <button class="btn btn--primary" id="bulk-preview-btn">Preview</button>
+          <button class="btn btn--ghost" id="bulk-submit-btn" disabled>Submit All</button>
+          <span id="bulk-status" style="font-size:.8rem;color:var(--text-muted)"></span>
+        </div>
+
+        <div class="bulk-result" id="bulk-result"></div>
+      </div>
+    </div>
+
+    <!-- ── TAB 3: Correction History ─────────── -->
+    <div class="tab-panel" id="tab-history">
+      <div style="max-width:760px">
+        <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:16px">
+          <div style="flex:1">
+            <label class="filter-label" for="h-postid">TrackTik Post ID</label>
+            <input type="text" id="h-postid" class="filter-input" placeholder="e.g. CO4MP-FTO"/>
+          </div>
+          <button class="btn btn--primary" id="h-load">Load History</button>
+        </div>
+        <div id="history-result" style="font-size:.82rem;color:var(--text-muted)">Enter a Post ID to view correction history.</div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ── Edit Modal ────────────────────────────── -->
+  <div class="modal-overlay" id="edit-modal">
+    <div class="edit-modal">
+      <div class="modal-header">
+        <h2 id="edit-modal-title">Edit Cycles</h2>
+        <button class="modal-close" id="edit-modal-close">&times;</button>
+      </div>
+      <div id="edit-modal-body"></div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.js"></script>
+  <script>
+  // ── Helpers ─────────────────────────────────────────────────
+  function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function fmtDate(iso){ if(!iso) return '—'; return new Date(iso).toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric',timeZone:'UTC'}); }
+  function fmtEnum(v){ if(!v) return '—'; return v.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()); }
+  function calcDays(o, c){
+    if(!o||!c) return null;
+    const d = (new Date(c)-new Date(o))/(1000*60*60*24);
+    return d>0?Math.round(d*100)/100:0;
+  }
+  function fmtDT(iso){ return new Date(iso).toLocaleString('en-US',{month:'2-digit',day:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'UTC'}); }
+
+  // ── Login Gate ───────────────────────────────────────────────
+  (function(){
+    var KEY='citadel_admin_auth';
+    function show(v){ document.getElementById('login-gate').style.display=v?'flex':'none'; document.body.style.overflow=v?'hidden':''; }
+    fetch('/index.html').then(r=>r.text()).then(html=>{
+      var m=html.match(/src="(data:image\/png;base64,[^"]+)"/);
+      if(m) document.getElementById('admin-login-logo').innerHTML='<img src="'+m[1]+'" style="height:36px">';
+    }).catch(()=>{});
+    if(sessionStorage.getItem(KEY)==='granted'){ show(false); init(); }
+    else show(true);
+    function tryLogin(){
+      var u=document.getElementById('lg-user').value.trim();
+      var p=document.getElementById('lg-pass').value;
+      var e=document.getElementById('lg-err');
+      if(u==='Jdidieu'&&p==='aOKc&YL3DP4n'){
+        sessionStorage.setItem(KEY,'granted');
+        show(false); init();
+      } else { e.style.display='block'; document.getElementById('lg-pass').value=''; document.getElementById('lg-pass').focus(); }
+    }
+    document.getElementById('lg-btn').onclick=tryLogin;
+    ['lg-user','lg-pass'].forEach(id=>{ document.getElementById(id).addEventListener('keydown',e=>{ if(e.key==='Enter') tryLogin(); }); });
+  })();
+
+  // ── Tab switching ────────────────────────────────────────────
+  document.querySelectorAll('.admin-tab').forEach(btn=>{
+    btn.onclick=()=>{
+      document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-'+btn.dataset.tab).classList.add('active');
+    };
+  });
+
+  // ── Init: load filter options ────────────────────────────────
+  async function init(){
+    try {
+      var res=await fetch('/api/dashboard-data?per_page=1');
+      var data=await res.json();
+      var fo=data.filter_options||{};
+      function populateSel(id,arr){
+        var sel=document.getElementById(id);
+        (arr||[]).forEach(v=>{ if(!v) return; var o=document.createElement('option'); o.value=v; o.textContent=fmtEnum(v); sel.appendChild(o); });
+      }
+      populateSel('a-region',fo.regions);
+      populateSel('a-manager',fo.hiring_managers);
+    } catch(e){}
+
+    flatpickr('#a-date-from',{dateFormat:'Y-m-d',altInput:true,altFormat:'m/d/Y',disableMobile:true});
+    flatpickr('#a-date-to',{dateFormat:'Y-m-d',altInput:true,altFormat:'m/d/Y',disableMobile:true});
+  }
+
+  // ── Load jobs table ──────────────────────────────────────────
+  var allJobCycles=[];
+
+  async function loadJobs(){
+    var params=new URLSearchParams({per_page:200});
+    var tracktik=document.getElementById('a-tracktik').value.trim();
+    var status=document.getElementById('a-status').value;
+    var df=document.getElementById('a-date-from').value;
+    var dt=document.getElementById('a-date-to').value;
+    var region=document.getElementById('a-region').value;
+    var manager=document.getElementById('a-manager').value;
+    var daysGt=parseInt(document.getElementById('a-days-gt').value)||0;
+
+    if(tracktik) params.set('tracktik_post_id',tracktik);
+    if(status)   params.set('status',status);
+    if(df)       params.set('date_from',df);
+    if(dt)       params.set('date_to',dt);
+    if(region)   params.set('region',region);
+    if(manager)  params.set('hiring_manager',manager);
+
+    document.getElementById('admin-tbody').innerHTML='<tr><td colspan="10" style="text-align:center;padding:30px"><div class="spinner" style="margin:0 auto"></div></td></tr>';
+
+    try {
+      var res=await fetch('/api/dashboard-data?'+params);
+      var data=await res.json();
+      var cycles=data.cycles||[];
+
+      // Apply days open filter client-side
+      var today=new Date();
+      if(daysGt>0){
+        cycles=cycles.filter(c=>{
+          if(!c.is_open) return false;
+          var d=(today-new Date(c.opened_at))/(1000*60*60*24);
+          return d>daysGt;
+        });
+      }
+
+      allJobCycles=cycles;
+      document.getElementById('a-count').textContent=cycles.length+' record'+(cycles.length!==1?'s':'');
+      renderAdminTable(cycles);
+    } catch(e){
+      document.getElementById('admin-tbody').innerHTML='<tr><td colspan="10" style="text-align:center;padding:30px;color:var(--status-closed)">Error: '+esc(e.message)+'</td></tr>';
+    }
+  }
+
+  function renderAdminTable(cycles){
+    var tbody=document.getElementById('admin-tbody');
+    var today=new Date();
+    if(!cycles.length){ tbody.innerHTML='<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text-muted)">No records found</td></tr>'; return; }
+    tbody.innerHTML=cycles.map(c=>{
+      var j=c.job_requisitions||{};
+      var days=c.days_to_hire!=null?Number(c.days_to_hire).toFixed(1)+'d':'—';
+      if(c.is_open){ var dOpen=Math.round((today-new Date(c.opened_at))/(1000*60*60*24)); days='<span style="color:var(--status-open)">'+dOpen+'d open</span>'; }
+      var statusBadge=c.is_open?'<span class="badge badge--open">Open</span>':'<span class="badge badge--closed">Closed</span>';
+      return '<tr>'+
+        '<td><span class="cell-id">'+esc(c.tracktik_post_id)+'</span></td>'+
+        '<td><span class="cell-site" title="'+esc(j.site_name_position_shift||'')+'">'+esc(j.site_name_position_shift||'—')+'</span></td>'+
+        '<td>'+esc(fmtEnum(j.region||'—'))+'</td>'+
+        '<td>'+esc(j.hiring_manager||'—')+'</td>'+
+        '<td>'+c.cycle_number+'</td>'+
+        '<td>'+fmtDate(c.opened_at)+'</td>'+
+        '<td>'+(c.is_open?'<span style="color:var(--status-open);font-size:.75rem">● Open</span>':fmtDate(c.closed_at))+'</td>'+
+        '<td>'+days+'</td>'+
+        '<td>'+statusBadge+'</td>'+
+        '<td><button class="btn--edit" onclick="openEditModal(\''+esc(c.tracktik_post_id)+'\')">Edit Cycles</button></td>'+
+      '</tr>';
+    }).join('');
+  }
+
+  document.getElementById('a-apply').onclick=loadJobs;
+  document.getElementById('a-reset').onclick=()=>{
+    ['a-tracktik','a-status','a-region','a-manager','a-days-gt'].forEach(id=>{ document.getElementById(id).value=''; });
+    ['a-date-from','a-date-to'].forEach(id=>{ var el=document.getElementById(id); if(el._flatpickr) el._flatpickr.clear(); });
+    document.getElementById('admin-tbody').innerHTML='<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text-muted)">Apply filters to load jobs</td></tr>';
+    document.getElementById('a-count').textContent='';
+  };
+
+  // ── Edit Modal ───────────────────────────────────────────────
+  var currentPostId='';
+  var currentCycles=[];
+  var editFlatpickrs=[];
+
+  async function openEditModal(postId){
+    currentPostId=postId;
+    document.getElementById('edit-modal-title').textContent='Edit Cycles — '+postId;
+    document.getElementById('edit-modal-body').innerHTML='<div class="spinner" style="margin:20px auto"></div>';
+    document.getElementById('edit-modal').classList.add('open');
+
+    var res=await fetch('/api/job-detail?tracktik_post_id='+encodeURIComponent(postId));
+    var data=await res.json();
+    currentCycles=data.cycles||[];
+    renderEditModal();
+  }
+
+  function renderEditModal(){
+    editFlatpickrs.forEach(fp=>{try{fp.destroy();}catch(e){}});
+    editFlatpickrs=[];
+
+    var html='<div class="cycle-rows" id="cycle-rows-wrap">';
+    currentCycles.forEach((c,idx)=>{
+      var openVal=c.opened_at?c.opened_at.slice(0,10):'';
+      var closeVal=c.closed_at?c.closed_at.slice(0,10):'';
+      html+='<div class="cycle-row" data-idx="'+idx+'">'+
+        '<div class="cycle-row-header">'+
+          '<span>Cycle #'+c.cycle_number+' — '+c.source.toUpperCase()+'</span>'+
+          '<button class="btn--del-cycle" onclick="deleteCycle('+idx+')">Delete Cycle</button>'+
+        '</div>'+
+        '<div class="cycle-fields">'+
+          '<div class="cycle-field"><label>Opened At</label><input type="text" class="cycle-opened" data-idx="'+idx+'" value="" placeholder="MM/DD/YYYY" readonly/></div>'+
+          '<div class="cycle-field"><label>Closed At</label><input type="text" class="cycle-closed" data-idx="'+idx+'" value="" placeholder="MM/DD/YYYY (blank if open)" readonly/></div>'+
+          '<div class="cycle-field"><label>Days (auto)</label><input type="text" class="cycle-days" data-idx="'+idx+'" readonly/></div>'+
+          '<div class="cycle-field cycle-field-note"><label>Correction Note</label><input type="text" class="cycle-note" data-idx="'+idx+'" placeholder="Reason for this change..."/></div>'+
+        '</div>'+
+      '</div>';
+    });
+    html+='</div>';
+    html+='<button class="add-cycle-btn" onclick="addNewCycleRow()">+ Add Another Cycle</button>';
+    html+='<div class="modal-actions">'+
+      '<button class="btn btn--ghost" onclick="document.getElementById(\'edit-modal\').classList.remove(\'open\')">Cancel</button>'+
+      '<button class="btn btn--primary" onclick="saveAllCycles()">Save All Changes</button>'+
+    '</div>';
+
+    document.getElementById('edit-modal-body').innerHTML=html;
+
+    // Init flatpickr for each cycle row
+    currentCycles.forEach((c,idx)=>{
+      var openEl=document.querySelector('.cycle-opened[data-idx="'+idx+'"]');
+      var closeEl=document.querySelector('.cycle-closed[data-idx="'+idx+'"]');
+      var daysEl=document.querySelector('.cycle-days[data-idx="'+idx+'"]');
+      var openVal=c.opened_at?c.opened_at.slice(0,10):'';
+      var closeVal=c.closed_at?c.closed_at.slice(0,10):'';
+
+      var fpOpen=flatpickr(openEl,{
+        dateFormat:'Y-m-d',altInput:true,altFormat:'m/d/Y',disableMobile:true,
+        defaultDate:openVal||undefined,
+        onChange:()=>updateDays(idx,daysEl),
+      });
+      var fpClose=flatpickr(closeEl,{
+        dateFormat:'Y-m-d',altInput:true,altFormat:'m/d/Y',disableMobile:true,
+        defaultDate:closeVal||undefined,
+        onChange:()=>updateDays(idx,daysEl),
+      });
+      editFlatpickrs.push(fpOpen,fpClose);
+      if(openVal||closeVal) updateDays(idx,daysEl);
+    });
+  }
+
+  function updateDays(idx,daysEl){
+    var openEl=document.querySelector('.cycle-opened[data-idx="'+idx+'"]');
+    var closeEl=document.querySelector('.cycle-closed[data-idx="'+idx+'"]');
+    var o=openEl.value, c=closeEl.value;
+    if(o&&c){ var d=calcDays(o+'T12:00:00Z',c+'T12:00:00Z'); daysEl.value=d!=null?d.toFixed(1)+'d':'—'; }
+    else daysEl.value=o?'Still Open':'—';
+  }
+
+  function addNewCycleRow(){
+    var newCycle={cycle_number:currentCycles.length+1,opened_at:null,closed_at:null,source:'manual',_isNew:true};
+    currentCycles.push(newCycle);
+    renderEditModal();
+  }
+
+  async function deleteCycle(idx){
+    var c=currentCycles[idx];
+    if(!confirm('Delete Cycle #'+c.cycle_number+' for '+currentPostId+'? This cannot be undone.')) return;
+    if(c._isNew){ currentCycles.splice(idx,1); renderEditModal(); return; }
+    var note=prompt('Reason for deletion (required):')||'Admin deletion';
+    var res=await fetch('/api/edit-cycles',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'delete',tracktik_post_id:currentPostId,cycle_number:c.cycle_number,note})});
+    var data=await res.json();
+    if(data.error){ alert('Error: '+data.error); return; }
+    currentCycles.splice(idx,1);
+    renderEditModal();
+    loadJobs();
+  }
+
+  async function saveAllCycles(){
+    var btn=document.querySelector('.modal-actions .btn--primary');
+    btn.disabled=true; btn.textContent='Saving...';
+    var errors=[];
+
+    for(var idx=0;idx<currentCycles.length;idx++){
+      var c=currentCycles[idx];
+      var openEl=document.querySelector('.cycle-opened[data-idx="'+idx+'"]');
+      var closeEl=document.querySelector('.cycle-closed[data-idx="'+idx+'"]');
+      var noteEl=document.querySelector('.cycle-note[data-idx="'+idx+'"]');
+      var openedAt=openEl?openEl.value:'';
+      var closedAt=closeEl?closeEl.value:'';
+      var note=noteEl?noteEl.value:'Admin correction';
+
+      if(!openedAt) continue;
+
+      var action=c._isNew?'add':'update';
+      var body={action,tracktik_post_id:currentPostId,opened_at:openedAt,closed_at:closedAt||null,note};
+      if(!c._isNew) body.cycle_number=c.cycle_number;
+
+      var res=await fetch('/api/edit-cycles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      var data=await res.json();
+      if(data.error) errors.push('Cycle #'+c.cycle_number+': '+data.error);
+    }
+
+    btn.disabled=false; btn.textContent='Save All Changes';
+
+    if(errors.length){ alert('Some errors occurred:\n'+errors.join('\n')); }
+    else {
+      document.getElementById('edit-modal').classList.remove('open');
+      loadJobs();
+      alert('✓ All cycles saved successfully');
+    }
+  }
+
+  document.getElementById('edit-modal-close').onclick=()=>document.getElementById('edit-modal').classList.remove('open');
+  document.getElementById('edit-modal').onclick=function(e){ if(e.target===this) this.classList.remove('open'); };
+
+  // ── Bulk Edit ────────────────────────────────────────────────
+  var bulkParsed=[];
+
+  document.getElementById('bulk-preview-btn').onclick=function(){
+    var csv=document.getElementById('bulk-csv').value.trim();
+    if(!csv){ document.getElementById('bulk-status').textContent='No data to preview'; return; }
+    var lines=csv.split('\n').map(l=>l.trim()).filter(Boolean);
+    // Skip header if present
+    var start=lines[0].toLowerCase().startsWith('tracktik')?1:0;
+    bulkParsed=[];
+    var html='<table class="data-table" style="margin-top:12px"><thead><tr><th>Post ID</th><th>Cycle #</th><th>Opened</th><th>Closed</th><th>Note</th><th>Action</th></tr></thead><tbody>';
+    for(var i=start;i<lines.length;i++){
+      var parts=lines[i].split(',').map(p=>p.trim());
+      var pid=parts[0]||'', cyc=parts[1]||'', opened=parts[2]||'', closed=parts[3]||'', note=parts.slice(4).join(',').trim();
+      if(!pid) continue;
+      var action=cyc?'Update Cycle #'+cyc:'Add New Cycle';
+      bulkParsed.push({tracktik_post_id:pid,cycle_number:cyc?parseInt(cyc):null,opened_at:opened,closed_at:closed,note});
+      html+='<tr><td>'+esc(pid)+'</td><td>'+(cyc||'—')+'</td><td>'+esc(opened)+'</td><td>'+(closed||'Still Open')+'</td><td>'+esc(note||'—')+'</td><td><span style="color:var(--gold);font-size:.75rem;font-weight:700">'+action+'</span></td></tr>';
+    }
+    html+='</tbody></table>';
+    document.getElementById('bulk-result').innerHTML=html;
+    document.getElementById('bulk-status').textContent=bulkParsed.length+' rows to process';
+    document.getElementById('bulk-submit-btn').disabled=false;
+  };
+
+  document.getElementById('bulk-submit-btn').onclick=async function(){
+    if(!bulkParsed.length) return;
+    if(!confirm('Submit '+bulkParsed.length+' bulk edit row(s)?')) return;
+    this.disabled=true;
+    document.getElementById('bulk-status').textContent='Processing...';
+
+    var res=await fetch('/api/edit-cycles',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'bulk',rows:bulkParsed,note:'bulk admin edit'})});
+    var data=await res.json();
+
+    if(data.error){ document.getElementById('bulk-status').textContent='Error: '+data.error; this.disabled=false; return; }
+
+    var html='<div style="margin-top:12px">';
+    (data.results||[]).forEach(r=>{
+      var cls=r.error?'err':'ok';
+      var icon=r.error?'✗':'✓';
+      html+='<div class="bulk-row-result '+cls+'">'+icon+' '+esc(r.tracktik_post_id)+' Cycle #'+r.cycle_number+' — '+(r.error||r.action)+'</div>';
+    });
+    html+='</div>';
+    document.getElementById('bulk-result').innerHTML=html;
+    document.getElementById('bulk-status').textContent='Done — '+data.results.filter(r=>!r.error).length+' succeeded, '+data.results.filter(r=>r.error).length+' failed';
+    this.disabled=false;
+    loadJobs();
+  };
+
+  // ── Correction History ───────────────────────────────────────
+  document.getElementById('h-load').onclick=async function(){
+    var pid=document.getElementById('h-postid').value.trim();
+    if(!pid){ document.getElementById('history-result').textContent='Enter a Post ID.'; return; }
+    document.getElementById('history-result').innerHTML='<div class="spinner" style="margin:12px auto"></div>';
+    var res=await fetch('/api/edit-cycles?tracktik_post_id='+encodeURIComponent(pid));
+    var data=await res.json();
+    if(data.error){ document.getElementById('history-result').textContent='Error: '+data.error; return; }
+    var corrections=data.corrections||[];
+    if(!corrections.length){ document.getElementById('history-result').innerHTML='<p style="color:var(--text-muted)">No corrections found for <strong>'+esc(pid)+'</strong>.</p>'; return; }
+    var tagClass={'cycle_edit':'tag-edit','cycle_add':'tag-add','cycle_delete':'tag-del','bulk_import':'tag-bulk'};
+    var html='<p style="font-size:.82rem;color:var(--text-muted);margin-bottom:8px">Found <strong>'+corrections.length+'</strong> correction(s) for <strong>'+esc(pid)+'</strong></p><div class="corrections-list">';
+    corrections.forEach(c=>{
+      var tc=tagClass[c.correction_type]||'tag-edit';
+      html+='<div class="correction-item">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
+          '<span class="c-type"><span class="tag '+tc+'">'+esc(c.correction_type)+'</span> Cycle #'+(c.cycle_number||'—')+'</span>'+
+          '<span class="c-date">'+fmtDT(c.created_at)+'</span>'+
+        '</div>'+
+        (c.note?'<div style="margin-bottom:6px;color:var(--text-primary)">Note: '+esc(c.note)+'</div>':'')+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:.72rem">'+
+          '<div><strong>Before:</strong><br>'+(c.before_state?JSON.stringify(c.before_state,null,1).slice(0,200):'—')+'</div>'+
+          '<div><strong>After:</strong><br>'+(c.after_state?JSON.stringify(c.after_state,null,1).slice(0,200):'—')+'</div>'+
+        '</div>'+
+      '</div>';
+    });
+    html+='</div>';
+    document.getElementById('history-result').innerHTML=html;
+  };
+  </script>
+</html>
