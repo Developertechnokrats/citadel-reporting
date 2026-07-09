@@ -47,21 +47,19 @@
     /* cycle edit rows */
     .cycle-rows{display:flex;flex-direction:column;gap:12px;margin-bottom:20px}
     .cycle-row{background:var(--bg-card-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px}
-    .cycle-row-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+    .cycle-row-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border)}
     .cycle-row-header span{font-size:.78rem;font-weight:700;color:var(--text-secondary)}
-    .cycle-fields{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+    .cycle-fields{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px}
     .cycle-field label{display:block;font-size:.68rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
     .cycle-field input{width:100%;background:var(--bg-card);border:1px solid var(--border-mid);border-radius:var(--radius-sm);color:var(--text-primary);font-size:.82rem;font-family:var(--font-sans);padding:7px 10px;outline:none;transition:border-color .15s;box-sizing:border-box}
     .cycle-field input:focus{border-color:var(--gold)}
-    .cycle-field input[readonly]{color:var(--gold-dark);background:var(--bg-page)}
-    .cycle-field-note{grid-column:1/-1}
-    .btn--del-cycle{padding:3px 10px;font-size:.72rem;font-weight:700;background:var(--status-closed-bg);color:var(--status-closed);border:1px solid var(--status-closed);border-radius:var(--radius-sm);cursor:pointer}
+    .btn--del-cycle{padding:3px 10px;font-size:.72rem;font-weight:700;background:var(--status-closed-bg);color:var(--status-closed);border:1px solid var(--status-closed);border-radius:var(--radius-sm);cursor:pointer;white-space:nowrap;flex-shrink:0}
     .btn--del-cycle:hover{background:var(--status-closed);color:#fff}
 
-    .add-cycle-btn{width:100%;padding:10px;background:transparent;border:1.5px dashed var(--border-mid);border-radius:var(--radius-sm);color:var(--text-muted);font-size:.82rem;cursor:pointer;transition:border-color .15s,color .15s}
+    .add-cycle-btn{width:100%;padding:10px;background:transparent;border:1.5px dashed var(--border-mid);border-radius:var(--radius-sm);color:var(--text-muted);font-size:.82rem;cursor:pointer;transition:border-color .15s,color .15s;margin-bottom:20px}
     .add-cycle-btn:hover{border-color:var(--gold);color:var(--gold)}
 
-    .modal-actions{display:flex;gap:10px;margin-top:20px;justify-content:flex-end}
+    .modal-actions{display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border)}
 
     /* ── Corrections history panel ──────────────── */
     .corrections-list{display:flex;flex-direction:column;gap:8px;margin-top:12px}
@@ -388,6 +386,19 @@ P00756-UAPT,1,06/12/2026,07/06/2026,Corrected close date</div>
     document.getElementById('a-count').textContent='';
   };
 
+  function saveCurrentInputs(){
+    // Read current input values back into currentCycles before any re-render
+    // so entered dates are not lost when adding/deleting a cycle row
+    currentCycles.forEach((c, idx) => {
+      var openEl  = document.querySelector('.cycle-opened[data-idx="'+idx+'"]');
+      var closeEl = document.querySelector('.cycle-closed[data-idx="'+idx+'"]');
+      var noteEl  = document.querySelector('.cycle-note[data-idx="'+idx+'"]');
+      if (openEl)  c._savedOpen  = openEl.value  || c.opened_at  || null;
+      if (closeEl) c._savedClose = closeEl.value || c.closed_at  || null;
+      if (noteEl)  c._savedNote  = noteEl.value;
+    });
+  }
+
   // ── Edit Modal ───────────────────────────────────────────────
   var currentPostId='';
   var currentCycles=[];
@@ -411,80 +422,110 @@ P00756-UAPT,1,06/12/2026,07/06/2026,Corrected close date</div>
 
     var html='<div class="cycle-rows" id="cycle-rows-wrap">';
     currentCycles.forEach((c,idx)=>{
-      var openVal=c.opened_at?c.opened_at.slice(0,10):'';
-      var closeVal=c.closed_at?c.closed_at.slice(0,10):'';
+      // Use saved input value if available (preserves typed-but-not-yet-saved dates)
+      var openVal  = c._savedOpen  || (c.opened_at  ? c.opened_at.slice(0,10)  : '');
+      var closeVal = c._savedClose || (c.closed_at  ? c.closed_at.slice(0,10)  : '');
+      var noteVal  = c._savedNote  || '';
+      var cycleLabel = c._isNew ? 'New Cycle' : 'Cycle #'+c.cycle_number+' — '+c.source.toUpperCase();
+
       html+='<div class="cycle-row" data-idx="'+idx+'">'+
         '<div class="cycle-row-header">'+
-          '<span>Cycle #'+c.cycle_number+' — '+c.source.toUpperCase()+'</span>'+
-          '<button class="btn--del-cycle" onclick="deleteCycle('+idx+')">Delete Cycle</button>'+
+          '<span>'+cycleLabel+'</span>'+
+          '<button class="btn--del-cycle" onclick="deleteCycleRow('+idx+')" type="button">Delete</button>'+
         '</div>'+
         '<div class="cycle-fields">'+
-          '<div class="cycle-field"><label>Opened At</label><input type="text" class="cycle-opened" data-idx="'+idx+'" value="" placeholder="MM/DD/YYYY" readonly/></div>'+
-          '<div class="cycle-field"><label>Closed At</label><input type="text" class="cycle-closed" data-idx="'+idx+'" value="" placeholder="MM/DD/YYYY (blank if open)" readonly/></div>'+
-          '<div class="cycle-field"><label>Days (auto)</label><input type="text" class="cycle-days" data-idx="'+idx+'" readonly/></div>'+
-          '<div class="cycle-field cycle-field-note"><label>Correction Note</label><input type="text" class="cycle-note" data-idx="'+idx+'" placeholder="Reason for this change..."/></div>'+
+          '<div class="cycle-field">'+
+            '<label>Opened At</label>'+
+            '<input type="text" class="cycle-opened" data-idx="'+idx+'" placeholder="MM/DD/YYYY" readonly/>'+
+          '</div>'+
+          '<div class="cycle-field">'+
+            '<label>Closed At</label>'+
+            '<input type="text" class="cycle-closed" data-idx="'+idx+'" placeholder="MM/DD/YYYY (blank = still open)" readonly/>'+
+          '</div>'+
+          '<div class="cycle-field">'+
+            '<label>Days (auto)</label>'+
+            '<input type="text" class="cycle-days" data-idx="'+idx+'" readonly style="color:var(--gold-dark);background:var(--bg-page)"/>'+
+          '</div>'+
+        '</div>'+
+        '<div class="cycle-field" style="margin-top:8px">'+
+          '<label>Correction Note</label>'+
+          '<input type="text" class="cycle-note" data-idx="'+idx+'" placeholder="Reason for this change..." value="'+esc(noteVal)+'"/>'+
         '</div>'+
       '</div>';
     });
     html+='</div>';
-    html+='<button class="add-cycle-btn" onclick="addNewCycleRow()">+ Add Another Cycle</button>';
+    html+='<button class="add-cycle-btn" onclick="addNewCycleRow()" type="button">+ Add Another Cycle</button>';
     html+='<div class="modal-actions">'+
-      '<button class="btn btn--ghost" onclick="document.getElementById(\'edit-modal\').classList.remove(\'open\')">Cancel</button>'+
-      '<button class="btn btn--primary" onclick="saveAllCycles()">Save All Changes</button>'+
+      '<button class="btn btn--ghost" onclick="document.getElementById(\'edit-modal\').classList.remove(\'open\')" type="button">Cancel</button>'+
+      '<button class="btn btn--primary" onclick="saveAllCycles()" type="button">Save All Changes</button>'+
     '</div>';
 
     document.getElementById('edit-modal-body').innerHTML=html;
 
     // Init flatpickr for each cycle row
     currentCycles.forEach((c,idx)=>{
-      var openEl=document.querySelector('.cycle-opened[data-idx="'+idx+'"]');
-      var closeEl=document.querySelector('.cycle-closed[data-idx="'+idx+'"]');
-      var daysEl=document.querySelector('.cycle-days[data-idx="'+idx+'"]');
-      var openVal=c.opened_at?c.opened_at.slice(0,10):'';
-      var closeVal=c.closed_at?c.closed_at.slice(0,10):'';
+      var openEl  = document.querySelector('.cycle-opened[data-idx="'+idx+'"]');
+      var closeEl = document.querySelector('.cycle-closed[data-idx="'+idx+'"]');
+      var daysEl  = document.querySelector('.cycle-days[data-idx="'+idx+'"]');
+      var openVal  = c._savedOpen  || (c.opened_at  ? c.opened_at.slice(0,10)  : '');
+      var closeVal = c._savedClose || (c.closed_at  ? c.closed_at.slice(0,10)  : '');
 
       var fpOpen=flatpickr(openEl,{
         dateFormat:'Y-m-d',altInput:true,altFormat:'m/d/Y',disableMobile:true,
         defaultDate:openVal||undefined,
-        onChange:()=>updateDays(idx,daysEl),
+        onChange:function(){ updateDays(idx); },
       });
       var fpClose=flatpickr(closeEl,{
         dateFormat:'Y-m-d',altInput:true,altFormat:'m/d/Y',disableMobile:true,
         defaultDate:closeVal||undefined,
-        onChange:()=>updateDays(idx,daysEl),
+        onChange:function(){ updateDays(idx); },
       });
       editFlatpickrs.push(fpOpen,fpClose);
-      if(openVal||closeVal) updateDays(idx,daysEl);
+      updateDays(idx);
     });
   }
 
-  function updateDays(idx,daysEl){
-    var openEl=document.querySelector('.cycle-opened[data-idx="'+idx+'"]');
-    var closeEl=document.querySelector('.cycle-closed[data-idx="'+idx+'"]');
+  function updateDays(idx){
+    var openEl  = document.querySelector('.cycle-opened[data-idx="'+idx+'"]');
+    var closeEl = document.querySelector('.cycle-closed[data-idx="'+idx+'"]');
+    var daysEl  = document.querySelector('.cycle-days[data-idx="'+idx+'"]');
+    if (!openEl||!closeEl||!daysEl) return;
     var o=openEl.value, c=closeEl.value;
-    if(o&&c){ var d=calcDays(o+'T12:00:00Z',c+'T12:00:00Z'); daysEl.value=d!=null?d.toFixed(1)+'d':'—'; }
-    else daysEl.value=o?'Still Open':'—';
+    if(o&&c){
+      var d=calcDays(o+'T12:00:00Z',c+'T12:00:00Z');
+      daysEl.value=d!=null?d.toFixed(1)+'d':'—';
+    } else {
+      daysEl.value=o?'Still Open':'—';
+    }
   }
 
   function addNewCycleRow(){
-    var newCycle={cycle_number:currentCycles.length+1,opened_at:null,closed_at:null,source:'manual',_isNew:true};
+    saveCurrentInputs(); // ← preserve any dates already typed before re-render
+    var newCycle={cycle_number:null,opened_at:null,closed_at:null,source:'manual',_isNew:true};
     currentCycles.push(newCycle);
     renderEditModal();
   }
 
-  async function deleteCycle(idx){
+  async function deleteCycleRow(idx){
     var c=currentCycles[idx];
-    if(!confirm('Delete Cycle #'+c.cycle_number+' for '+currentPostId+'? This cannot be undone.')) return;
-    if(c._isNew){ currentCycles.splice(idx,1); renderEditModal(); return; }
+    if(c._isNew){
+      saveCurrentInputs();
+      currentCycles.splice(idx,1);
+      renderEditModal();
+      return;
+    }
+    if(!confirm('Delete Cycle #'+c.cycle_number+' for '+currentPostId+'?\nThis cannot be undone.')) return;
     var note=prompt('Reason for deletion (required):')||'Admin deletion';
     var res=await fetch('/api/edit-cycles',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({action:'delete',tracktik_post_id:currentPostId,cycle_number:c.cycle_number,note})});
     var data=await res.json();
     if(data.error){ alert('Error: '+data.error); return; }
+    saveCurrentInputs();
     currentCycles.splice(idx,1);
     renderEditModal();
     loadJobs();
   }
+
 
   async function saveAllCycles(){
     var btn=document.querySelector('.modal-actions .btn--primary');
