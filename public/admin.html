@@ -45,18 +45,36 @@
     .modal-close:hover{color:var(--text-primary)}
 
     /* cycle edit rows */
-    .cycle-rows{display:flex;flex-direction:column;gap:12px;margin-bottom:20px}
-    .cycle-row{background:var(--bg-card-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px}
-    .cycle-row-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border)}
-    .cycle-row-header span{font-size:.78rem;font-weight:700;color:var(--text-secondary)}
-    .cycle-fields{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px}
-    .cycle-field label{display:block;font-size:.68rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
-    .cycle-field input{width:100%;background:var(--bg-card);border:1px solid var(--border-mid);border-radius:var(--radius-sm);color:var(--text-primary);font-size:.82rem;font-family:var(--font-sans);padding:7px 10px;outline:none;transition:border-color .15s;box-sizing:border-box}
+    .cycle-rows{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+
+    .cycle-card{background:var(--bg-card-2);border:1px solid var(--border);border-radius:8px;padding:14px 16px}
+    .cycle-card.new-cycle{border-style:dashed;border-color:var(--gold);background:var(--bg-page)}
+
+    /* Header: label + source badge on left, delete on right — full width, never overlaps fields */
+    .cycle-hdr{display:flex;align-items:center;justify-content:space-between;width:100%;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--border)}
+    .cycle-hdr-left{display:flex;align-items:center;gap:8px}
+    .cycle-num{font-size:.82rem;font-weight:700;color:var(--text-secondary)}
+    .cycle-src{font-size:.65rem;font-weight:700;padding:2px 8px;border-radius:10px;text-transform:uppercase;letter-spacing:.04em}
+    .src-ghl{background:#E3F2FD;color:#1565C0}
+    .src-csv{background:#FFF8E1;color:#B8962E}
+    .src-manual{background:#E8F5E9;color:#2E7D32}
+
+    /* 3 equal columns — sit completely below the header */
+    .cycle-fields{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:10px}
+    .cycle-field label{display:block;font-size:.65rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+    .cycle-field input{width:100%;background:var(--bg-card);border:1px solid var(--border-mid);border-radius:6px;color:var(--text-primary);font-size:.82rem;font-family:var(--font-sans);padding:7px 10px;outline:none;transition:border-color .15s;box-sizing:border-box}
     .cycle-field input:focus{border-color:var(--gold)}
-    .btn--del-cycle{padding:3px 10px;font-size:.72rem;font-weight:700;background:var(--status-closed-bg);color:var(--status-closed);border:1px solid var(--status-closed);border-radius:var(--radius-sm);cursor:pointer;white-space:nowrap;flex-shrink:0}
+    .cycle-field input.auto-days{color:var(--gold-dark);background:var(--bg-page);font-weight:600;border-color:var(--border)}
+
+    /* Note field: full width below the 3 columns */
+    .cycle-note-row label{display:block;font-size:.65rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+    .cycle-note-row input{width:100%;background:var(--bg-card);border:1px solid var(--border-mid);border-radius:6px;color:var(--text-primary);font-size:.82rem;font-family:var(--font-sans);padding:7px 10px;outline:none;transition:border-color .15s;box-sizing:border-box}
+    .cycle-note-row input:focus{border-color:var(--gold)}
+
+    .btn--del-cycle{padding:4px 12px;font-size:.72rem;font-weight:700;color:var(--status-closed);border:1px solid var(--status-closed);border-radius:6px;background:var(--status-closed-bg);cursor:pointer;white-space:nowrap;flex-shrink:0}
     .btn--del-cycle:hover{background:var(--status-closed);color:#fff}
 
-    .add-cycle-btn{width:100%;padding:10px;background:transparent;border:1.5px dashed var(--border-mid);border-radius:var(--radius-sm);color:var(--text-muted);font-size:.82rem;cursor:pointer;transition:border-color .15s,color .15s;margin-bottom:20px}
+    .add-cycle-btn{width:100%;padding:10px;background:transparent;border:1.5px dashed var(--border-mid);border-radius:8px;color:var(--text-muted);font-size:.82rem;cursor:pointer;transition:border-color .15s,color .15s;margin-bottom:18px}
     .add-cycle-btn:hover{border-color:var(--gold);color:var(--gold)}
 
     .modal-actions{display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1px solid var(--border)}
@@ -422,35 +440,29 @@ P00756-UAPT,1,06/12/2026,07/06/2026,Corrected close date</div>
 
     var html='<div class="cycle-rows" id="cycle-rows-wrap">';
     currentCycles.forEach((c,idx)=>{
-      // Use saved input value if available (preserves typed-but-not-yet-saved dates)
       var openVal  = c._savedOpen  || (c.opened_at  ? c.opened_at.slice(0,10)  : '');
       var closeVal = c._savedClose || (c.closed_at  ? c.closed_at.slice(0,10)  : '');
       var noteVal  = c._savedNote  || '';
-      var cycleLabel = c._isNew ? 'New Cycle' : 'Cycle #'+c.cycle_number+' — '+c.source.toUpperCase();
+      var isNew    = !!c._isNew;
+      var srcClass = isNew ? 'src-manual' : (c.source==='ghl'?'src-ghl':c.source==='csv'?'src-csv':'src-manual');
+      var srcLabel = isNew ? 'Manual' : c.source.toUpperCase();
+      var cycleNum = isNew ? 'New Cycle' : 'Cycle #'+c.cycle_number;
+      var delLabel = isNew ? 'Remove' : 'Delete';
 
-      html+='<div class="cycle-row" data-idx="'+idx+'">'+
-        '<div class="cycle-row-header">'+
-          '<span>'+cycleLabel+'</span>'+
-          '<button class="btn--del-cycle" onclick="deleteCycleRow('+idx+')" type="button">Delete</button>'+
+      html+='<div class="cycle-card'+(isNew?' new-cycle':'')+'" data-idx="'+idx+'">'+
+        '<div class="cycle-hdr">'+
+          '<div class="cycle-hdr-left">'+
+            '<span class="cycle-num">'+cycleNum+'</span>'+
+            '<span class="cycle-src '+srcClass+'">'+srcLabel+'</span>'+
+          '</div>'+
+          '<button class="btn--del-cycle" onclick="deleteCycleRow('+idx+')" type="button">'+delLabel+'</button>'+
         '</div>'+
         '<div class="cycle-fields">'+
-          '<div class="cycle-field">'+
-            '<label>Opened At</label>'+
-            '<input type="text" class="cycle-opened" data-idx="'+idx+'" placeholder="MM/DD/YYYY" readonly/>'+
-          '</div>'+
-          '<div class="cycle-field">'+
-            '<label>Closed At</label>'+
-            '<input type="text" class="cycle-closed" data-idx="'+idx+'" placeholder="MM/DD/YYYY (blank = still open)" readonly/>'+
-          '</div>'+
-          '<div class="cycle-field">'+
-            '<label>Days (auto)</label>'+
-            '<input type="text" class="cycle-days" data-idx="'+idx+'" readonly style="color:var(--gold-dark);background:var(--bg-page)"/>'+
-          '</div>'+
+          '<div class="cycle-field"><label>Opened At</label><input type="text" class="cycle-opened" data-idx="'+idx+'" placeholder="MM/DD/YYYY" readonly/></div>'+
+          '<div class="cycle-field"><label>Closed At</label><input type="text" class="cycle-closed" data-idx="'+idx+'" placeholder="MM/DD/YYYY (blank = open)" readonly/></div>'+
+          '<div class="cycle-field"><label>Days (auto)</label><input type="text" class="cycle-days auto-days" data-idx="'+idx+'" readonly/></div>'+
         '</div>'+
-        '<div class="cycle-field" style="margin-top:8px">'+
-          '<label>Correction Note</label>'+
-          '<input type="text" class="cycle-note" data-idx="'+idx+'" placeholder="Reason for this change..." value="'+esc(noteVal)+'"/>'+
-        '</div>'+
+        '<div class="cycle-note-row"><label>Correction Note</label><input type="text" class="cycle-note" data-idx="'+idx+'" placeholder="Reason for this change..." value="'+esc(noteVal)+'"/></div>'+
       '</div>';
     });
     html+='</div>';
