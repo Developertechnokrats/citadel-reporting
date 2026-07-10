@@ -54,7 +54,9 @@ exports.handler = async (event) => {
       .from("job_requisitions")
       .select("tracktik_post_id, site_name_position_shift, region, city_of_site_location, hiring_manager, officer_type, current_status, total_cycles, tracktik_site_id, ghl_id, advertised_pay_rate, first_seen_at");
 
-    if (status)           jobQuery = jobQuery.eq("current_status", status.toLowerCase());
+    // NOTE: status is intentionally NOT filtered here. `current_status`
+    // reflects only a job's LATEST state, which drops reopened jobs out
+    // of the "Closed" view. Status is applied cycle-aware below instead.
     if (region)           jobQuery = jobQuery.ilike("region", `%${region}%`);
     if (city)             jobQuery = jobQuery.ilike("city_of_site_location", `%${city}%`);
     if (hiring_manager)   jobQuery = jobQuery.ilike("hiring_manager", `%${hiring_manager}%`);
@@ -81,7 +83,30 @@ exports.handler = async (event) => {
     if (cycleResult.error) throw new Error(cycleResult.error.message);
 
     const jobMap = new Map((jobResult.data || []).map(j => [j.tracktik_post_id, j]));
-    const allCycles = (cycleResult.data || []).filter(c => jobMap.has(c.tracktik_post_id));
+    const rawCycles = (cycleResult.data || []).filter(c => jobMap.has(c.tracktik_post_id));
+
+    // ── Status filter (cycle-aware) ──────────────────────────────
+    // Match on a job's FULL cycle history, not its latest status, so a
+    // job that was closed then reopened shows up under BOTH views:
+    //   open   → job has at least one still-open cycle (is_open === true)
+    //   closed → job has at least one cycle that was ever closed (closed_at != null)
+    let allCycles = rawCycles;
+    if (status) {
+      const s = status.toLowerCase();
+      const byJob = new Map();
+      for (const c of rawCycles) {
+        if (!byJob.has(c.tracktik_post_id)) byJob.set(c.tracktik_post_id, []);
+        byJob.get(c.tracktik_post_id).push(c);
+      }
+      const matchIds = new Set();
+      for (const [pid, cyc] of byJob) {
+        const ok = s === "open"   ? cyc.some(c => c.is_open === true)
+                 : s === "closed" ? cyc.some(c => c.closed_at !== null)
+                 : true;
+        if (ok) matchIds.add(pid);
+      }
+      allCycles = rawCycles.filter(c => matchIds.has(c.tracktik_post_id));
+    }
 
     // ── Metric 1: "Opened in Period" — strict, cycle.opened_at in range ──
     const strictCycles = hasPeriod
