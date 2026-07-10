@@ -9,6 +9,19 @@
   <style>
     .flatpickr-input { background: var(--bg-card-2) !important; color: var(--text-primary) !important; }
     .flatpickr-alt-input { width: 100%; }
+    .region-lock-badge {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 1px 7px;
+      font-size: .68rem;
+      font-weight: 600;
+      letter-spacing: .02em;
+      color: var(--text-muted);
+      background: var(--bg-card-2);
+      border: 1px solid var(--border, rgba(255,255,255,.12));
+      border-radius: 10px;
+      vertical-align: middle;
+    }
   </style>
 </head>
 <body>
@@ -144,7 +157,9 @@
           </div>
 
           <div class="filter-group">
-            <label class="filter-label" for="f-region">Region</label>
+            <label class="filter-label" for="f-region">Region
+              <span id="region-lock-badge" class="region-lock-badge" style="display:none;">🔒 Region Locked</span>
+            </label>
             <select id="f-region" class="filter-input">
               <option value="">All Regions</option>
             </select>

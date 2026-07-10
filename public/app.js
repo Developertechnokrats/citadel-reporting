@@ -15,6 +15,8 @@ const mainTable    = document.getElementById("main-table");
 const pagination   = document.getElementById("pagination");
 const resultsCount = document.getElementById("results-count");
 
+const regionSelect = document.getElementById("f-region");
+
 const statOpenedPeriod = document.getElementById("stat-opened-period");
 const statActivePeriod = document.getElementById("stat-active-period");
 const statClosedPeriod = document.getElementById("stat-closed-period");
@@ -73,6 +75,9 @@ async function loadDashboard() {
     populateSelect("f-city",    data.filter_options?.cities);
     populateSelect("f-manager", data.filter_options?.hiring_managers);
     populateSelect("f-officer", data.filter_options?.officer_types);
+
+    // Keep the region pinned if this view is locked (options were just rebuilt)
+    if (window.__regionLocked) applyRegionLock();
 
     // Table
     renderTable(data.cycles || []);
@@ -436,8 +441,11 @@ document.getElementById("btn-apply").addEventListener("click", () => {
 });
 
 document.getElementById("btn-reset").addEventListener("click", () => {
-  ["f-tracktik","f-site-id","f-status","f-region","f-city","f-manager","f-officer"]
-    .forEach(id => { document.getElementById(id).value = ""; });
+  // Region stays pinned when locked — reset must not clear it
+  const clearIds = window.__regionLocked
+    ? ["f-tracktik","f-site-id","f-status","f-city","f-manager","f-officer"]
+    : ["f-tracktik","f-site-id","f-status","f-region","f-city","f-manager","f-officer"];
+  clearIds.forEach(id => { document.getElementById(id).value = ""; });
   // Clear flatpickr date pickers
   ["f-date-from","f-date-to"].forEach(id => {
     const el = document.getElementById(id);
@@ -464,5 +472,47 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape") modalOverlay.classList.add("hidden");
 });
 
+// ── Region locking (URL-driven) ───────────────────────────
+// If the page is opened with ?locked_region=<value>, the region
+// filter is pinned to that value: pre-selected, disabled, and
+// visually flagged. This mirrors the DOMContentLoaded pattern —
+// app.js runs at the end of <body>, so the DOM is already ready.
+const params = new URLSearchParams(window.location.search);
+const lockedRegion = params.get("locked_region");
+
+if (lockedRegion) {
+  window.__regionLocked = true;
+  window.__lockedRegionValue = lockedRegion;
+}
+
+function applyRegionLock() {
+  if (!window.__regionLocked || !regionSelect) return;
+
+  // Ensure the locked value exists as an option so the select can
+  // display it even before the API-driven options arrive.
+  const has = Array.from(regionSelect.options).some(o => o.value === window.__lockedRegionValue);
+  if (!has) {
+    const opt = document.createElement("option");
+    opt.value = window.__lockedRegionValue;
+    opt.textContent = fmtEnum(window.__lockedRegionValue);
+    regionSelect.appendChild(opt);
+  }
+
+  // Apply the locked value
+  regionSelect.value = window.__lockedRegionValue;
+
+  // Disable and visually indicate it's locked
+  regionSelect.disabled = true;
+  regionSelect.style.opacity = "0.6";
+  regionSelect.style.cursor = "not-allowed";
+  regionSelect.title = "Region is locked for this view";
+
+  // Reveal the lock badge
+  const badge = document.getElementById("region-lock-badge");
+  if (badge) badge.style.display = "inline-block";
+}
+
 // ── Init ──────────────────────────────────────────────────
+// Pin the region BEFORE the first fetch so data loads filtered.
+applyRegionLock();
 loadDashboard();
