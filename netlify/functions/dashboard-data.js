@@ -52,7 +52,7 @@ exports.handler = async (event) => {
     // ── Query 1: jobs (apply job-level filters) ────────────────
     let jobQuery = supabase
       .from("job_requisitions")
-      .select("tracktik_post_id, site_name_position_shift, region, city_of_site_location, hiring_manager, officer_type, current_status, total_cycles, tracktik_site_id, ghl_id, advertised_pay_rate, first_seen_at");
+      .select("tracktik_post_id, site_name_position_shift, region, city_of_site_location, hiring_manager, officer_type, current_status, total_cycles, tracktik_site_id, ghl_id, advertised_pay_rate, first_seen_at, hiring_needs");
 
     // NOTE: status is intentionally NOT filtered here. `current_status`
     // reflects only a job's LATEST state, which drops reopened jobs out
@@ -167,6 +167,22 @@ exports.handler = async (event) => {
 
     const totalTouchedInPeriod = touchedCycles.length;
 
+    // ── Metric 5: "Hiring Need in the Period" — SUM of hiring_needs
+    //     across the DISTINCT jobs whose cycles touched the window
+    //     (same set that feeds Metric 2). hiring_needs lives on
+    //     job_requisitions (one value PER JOB, not per cycle), so we
+    //     collapse touched cycles to distinct tracktik_post_id first —
+    //     this prevents a reopened job (two cycle rows) from counting
+    //     its hiring need twice. Missing/null values contribute 0,
+    //     matching how avg_days_to_hire ignores nulls.
+    const hiringNeedPostIds = new Set(touchedCycles.map(c => c.tracktik_post_id));
+    let hiringNeedInPeriod = 0;
+    for (const pid of hiringNeedPostIds) {
+      const job = jobMap.get(pid);
+      const hn = job && job.hiring_needs != null ? parseInt(job.hiring_needs, 10) : 0;
+      if (!Number.isNaN(hn)) hiringNeedInPeriod += hn;
+    }
+
     // ── Table: show the UNION of strict (opened) + touched (overlap) + closed-in-period ──
     const combinedMap = new Map();
     for (const c of touchedCycles) combinedMap.set(c.id, c);
@@ -201,6 +217,7 @@ exports.handler = async (event) => {
           total_touched_in_period: totalTouchedInPeriod,
           closed_in_period:   closedCount,
           avg_days_to_hire:   avgDays,
+          hiring_need_in_period: hiringNeedInPeriod,
         },
         filter_options: {
           regions:           unique("region"),

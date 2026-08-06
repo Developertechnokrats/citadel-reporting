@@ -20,6 +20,7 @@ const regionSelect = document.getElementById("f-region");
 const statOpenedPeriod = document.getElementById("stat-opened-period");
 const statActivePeriod = document.getElementById("stat-active-period");
 const statClosedPeriod = document.getElementById("stat-closed-period");
+const statHiringNeed   = document.getElementById("stat-hiring-need");
 const statAvgDays      = document.getElementById("stat-avg-days");
 
 const modalOverlay  = document.getElementById("modal-overlay");
@@ -66,6 +67,7 @@ async function loadDashboard() {
     statOpenedPeriod.textContent = (data.summary?.opened_in_period ?? 0).toLocaleString();
     statActivePeriod.textContent = (data.summary?.total_touched_in_period ?? 0).toLocaleString();
     statClosedPeriod.textContent = (data.summary?.closed_in_period ?? 0).toLocaleString();
+    statHiringNeed.textContent   = (data.summary?.hiring_need_in_period ?? 0).toLocaleString();
     statAvgDays.textContent      = data.summary?.avg_days_to_hire != null
       ? data.summary.avg_days_to_hire + "d"
       : "—";
