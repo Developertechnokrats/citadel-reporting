@@ -253,6 +253,7 @@ function buildDetailHTML(job, cycles, history) {
   // ── Hiring ───────────────────────────────────────────────
   const hiringFields = `
     ${row("Hiring Manager",     fmtManager(job.hiring_manager))}
+    ${row("Hiring Needs",       job.hiring_needs != null ? String(job.hiring_needs) : null)}
     ${row("HR Approval Status", fmtEnum(job.hr_approval_status))}
     ${row("Interview Type",     fmtEnum(job.interview_type))}
     ${row("Interview Calendar", job.interview_calendar)}
