@@ -21,6 +21,16 @@ function toTitleCase(str) {
     .trim();
 }
 
+// Parse a value to an integer, returning null when empty/non-numeric.
+// e.g. "2" → 2, 2 → 2, "" → null, undefined → null, "abc" → null
+function toIntOrNull(val) {
+  if (val === null || val === undefined) return null;
+  const s = String(val).trim();
+  if (s === "") return null;
+  const n = parseInt(s, 10);
+  return Number.isNaN(n) ? null : n;
+}
+
 // ── Field mapper: GHL JSON → DB columns ─────────────────────
 function mapPayloadToRecord(payload) {
   return {
@@ -33,6 +43,7 @@ function mapPayloadToRecord(payload) {
     disqualifying_questions:       payload["Disqualifying Questions"],
     employment_status:             payload["Employment Status"],
     hiring_manager:                toTitleCase(payload["Hiring Manager"]),
+    hiring_needs:                  toIntOrNull(payload["Hiring Needs"]),
     hr_approval_status:            payload["HR Approval Status"],
     in_person_interview_address:   payload["In-Person Interview Physical Address"],
     industry:                      payload["Industry"],
