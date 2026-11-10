@@ -138,6 +138,7 @@ function renderTable(cycles) {
       <td><span class="cell-id">${esc(cycle.tracktik_post_id)}</span></td>
       <td><span class="cell-site" title="${esc(job.site_name_position_shift || "")}">${esc(job.site_name_position_shift || "—")}</span></td>
       <td>${esc(job.region || "—")}</td>
+      <td class="cell-hiring-need">${job.hiring_needs != null ? esc(String(job.hiring_needs)) : "—"}</td>
       <td>${esc(fmtManager(job.hiring_manager) || "—")}</td>
       <td class="cell-cycle">${cycle.cycle_number}</td>
       <td>${openedFmt}</td>
