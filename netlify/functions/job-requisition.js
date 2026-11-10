@@ -1,28 +1,30 @@
 // netlify/functions/job-requisition.js
-// Receives GHL Job Requisition webhooks and processes them
+// Receives GHL Job Requisition webhooks and processes them.
+//
+// KEYING STRATEGY (and WHY):
+//   Jobs are matched by the STABLE ghl_id first (falling back to
+//   tracktik_post_id only for legacy rows that have no ghl_id). An earlier
+//   version matched solely on "TrackTik Post ID" — editing that ID in GHL
+//   sent a webhook with a NEW id but the SAME ghl_id, which found no match
+//   and INSERTED a second row, forking the job and leaving the old row stuck
+//   is_open=true. Matching on ghl_id lets us RENAME the existing row's
+//   tracktik_post_id in place instead; child rows follow via the
+//   ON UPDATE CASCADE foreign keys on job_cycles / job_status_history.
+//
+// Cycle/history logic (STEP 3–5) is unchanged from the original.
 
 const { createClient } = require("@supabase/supabase-js");
 
-// ── Supabase client ─────────────────────────────────────────
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY  // use service_role key for full access
+  process.env.SUPABASE_SERVICE_KEY
 );
 
-// ── Helpers ──────────────────────────────────────────────────
-// Convert snake_case or lowercase names to Title Case
-// e.g. "heather_jordan" → "Heather Jordan"
-//      "jeff_patton"    → "Jeff Patton"
 function toTitleCase(str) {
   if (!str || typeof str !== "string") return str;
-  return str
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, c => c.toUpperCase())
-    .trim();
+  return str.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()).trim();
 }
 
-// Parse a value to an integer, returning null when empty/non-numeric.
-// e.g. "2" → 2, 2 → 2, "" → null, undefined → null, "abc" → null
 function toIntOrNull(val) {
   if (val === null || val === undefined) return null;
   const s = String(val).trim();
@@ -31,7 +33,6 @@ function toIntOrNull(val) {
   return Number.isNaN(n) ? null : n;
 }
 
-// ── Field mapper: GHL JSON → DB columns ─────────────────────
 function mapPayloadToRecord(payload) {
   return {
     tracktik_post_id:              payload["TrackTik Post ID"],
@@ -71,14 +72,11 @@ function mapPayloadToRecord(payload) {
   };
 }
 
-// ── Main handler ─────────────────────────────────────────────
 exports.handler = async (event) => {
-  // Only accept POST
   if (event.httpMethod !== "POST") {
     return { statusCode: 405, body: JSON.stringify({ error: "Method not allowed" }) };
   }
 
-  // Validate webhook secret (optional but recommended)
   const webhookSecret = process.env.WEBHOOK_SECRET;
   if (webhookSecret) {
     const incomingSecret = event.headers["x-webhook-secret"] || event.headers["X-Webhook-Secret"];
@@ -99,24 +97,64 @@ exports.handler = async (event) => {
   if (!tracktikPostId) {
     return { statusCode: 400, body: JSON.stringify({ error: "Missing TrackTik Post ID" }) };
   }
+  const ghlId = payload["ID"] || null;
 
   const incomingStatus = (payload["Operational Job Status"] || "").toLowerCase();
   const now = new Date().toISOString();
 
-  console.log(`[Webhook] TrackTik: ${tracktikPostId} | Status: ${incomingStatus}`);
+  console.log(`[Webhook] TrackTik: ${tracktikPostId} | ghl_id: ${ghlId} | Status: ${incomingStatus}`);
 
   try {
-    // ── STEP 1: Check if this job exists already ─────────────
-    const { data: existingJob } = await supabase
-      .from("job_requisitions")
-      .select("tracktik_post_id, current_status, total_cycles")
-      .eq("tracktik_post_id", tracktikPostId)
-      .maybeSingle();
+    // ── STEP 1: Find the existing job by STABLE ghl_id first ──────────
+    //    Fall back to tracktik_post_id for legacy rows that have no ghl_id.
+    let existingJob = null;
+    if (ghlId) {
+      ({ data: existingJob } = await supabase
+        .from("job_requisitions")
+        .select("tracktik_post_id, current_status, total_cycles, ghl_id")
+        .eq("ghl_id", ghlId)
+        .maybeSingle());
+    }
+    if (!existingJob) {
+      ({ data: existingJob } = await supabase
+        .from("job_requisitions")
+        .select("tracktik_post_id, current_status, total_cycles, ghl_id")
+        .eq("tracktik_post_id", tracktikPostId)
+        .maybeSingle());
+    }
 
     const isNewJob = !existingJob;
     const recordData = mapPayloadToRecord(payload);
 
-    // ── STEP 2: Upsert job_requisitions ──────────────────────
+    // ── STEP 1.5: TrackTik Post ID edited in GHL? Rename in place ─────
+    //    The existing row (matched by ghl_id) carries the OLD id. Update it
+    //    to the new id; ON UPDATE CASCADE carries the change to job_cycles
+    //    and job_status_history. This REPLACES the old "fork a new row" bug.
+    if (existingJob && existingJob.tracktik_post_id !== tracktikPostId) {
+      const oldPid = existingJob.tracktik_post_id;
+
+      // Guard: never collide with a different row already on the new id.
+      const { data: collision } = await supabase
+        .from("job_requisitions")
+        .select("tracktik_post_id, ghl_id")
+        .eq("tracktik_post_id", tracktikPostId)
+        .maybeSingle();
+
+      if (collision && collision.ghl_id !== ghlId) {
+        console.error(`[DB] Cannot rename ${oldPid} -> ${tracktikPostId}: id already used by ghl_id ${collision.ghl_id}`);
+        return { statusCode: 409, body: JSON.stringify({ error: "TrackTik Post ID already in use by another job" }) };
+      }
+
+      const { error: renameErr } = await supabase
+        .from("job_requisitions")
+        .update({ tracktik_post_id: tracktikPostId, updated_at: now })
+        .eq("ghl_id", ghlId);
+
+      if (renameErr) throw new Error(`Rename tracktik_post_id ${oldPid}->${tracktikPostId}: ${renameErr.message}`);
+      console.log(`[DB] TrackTik Post ID changed ${oldPid} -> ${tracktikPostId} (ghl_id ${ghlId}); row + children migrated`);
+    }
+
+    // ── STEP 2: Upsert job_requisitions ──────────────────────────────
     if (isNewJob) {
       recordData.first_seen_at = now;
       recordData.created_at = now;
@@ -129,6 +167,7 @@ exports.handler = async (event) => {
       if (insertErr) throw new Error(`Insert job_requisitions: ${insertErr.message}`);
       console.log(`[DB] New job created: ${tracktikPostId}`);
     } else {
+      // Row now lives under the current tracktikPostId (renamed above if needed).
       const { error: updateErr } = await supabase
         .from("job_requisitions")
         .update({
@@ -141,11 +180,10 @@ exports.handler = async (event) => {
       console.log(`[DB] Job updated: ${tracktikPostId}`);
     }
 
-    // ── STEP 3: Determine cycle number ───────────────────────
+    // ── STEP 3: Determine cycle number ───────────────────────────────
     let cycleNumber = null;
 
     if (incomingStatus === "open") {
-      // Check if there is already an open (unclosed) cycle — avoid duplicates
       const { data: alreadyOpen } = await supabase
         .from("job_cycles")
         .select("cycle_number")
@@ -155,11 +193,9 @@ exports.handler = async (event) => {
         .maybeSingle();
 
       if (alreadyOpen) {
-        // Cycle already open — reuse it, do not create a duplicate
         cycleNumber = alreadyOpen.cycle_number;
         console.log(`[DB] Cycle ${cycleNumber} already open for ${tracktikPostId} — skipping new cycle creation`);
       } else {
-        // No open cycle exists — create a fresh one
         const newCycleNumber = (existingJob?.total_cycles || 0) + 1;
         cycleNumber = newCycleNumber;
 
@@ -183,7 +219,6 @@ exports.handler = async (event) => {
       }
 
     } else if (incomingStatus === "closed") {
-      // Find the latest open (unclosed) cycle
       const { data: openCycle, error: cycleErr } = await supabase
         .from("job_cycles")
         .select("*")
@@ -198,13 +233,11 @@ exports.handler = async (event) => {
       if (openCycle) {
         cycleNumber = openCycle.cycle_number;
 
-        // Calculate days_to_hire
         const openedAt = new Date(openCycle.opened_at);
         const closedAt = new Date(now);
         const diffMs = closedAt - openedAt;
         const daysToHire = parseFloat((diffMs / (1000 * 60 * 60 * 24)).toFixed(2));
 
-        // Close this cycle
         const { error: cycleUpdateErr } = await supabase
           .from("job_cycles")
           .update({
@@ -218,7 +251,6 @@ exports.handler = async (event) => {
 
         if (cycleUpdateErr) throw new Error(`Close cycle: ${cycleUpdateErr.message}`);
 
-        // Recalculate pct_time_to_hire for all cycles
         const { error: pctErr } = await supabase.rpc("recalculate_pct_time_to_hire", {
           p_tracktik_post_id: tracktikPostId,
         });
@@ -231,8 +263,7 @@ exports.handler = async (event) => {
       }
     }
 
-    // ── STEP 4: Log to job_status_history ────────────────────
-    // Every webhook hit is recorded — this is the full audit trail
+    // ── STEP 4: Log to job_status_history ────────────────────────────
     const historyStatus = isNewJob && !incomingStatus ? "created" : (incomingStatus || "created");
 
     const { error: histErr } = await supabase
@@ -247,7 +278,7 @@ exports.handler = async (event) => {
 
     if (histErr) throw new Error(`Insert job_status_history: ${histErr.message}`);
 
-    // ── STEP 5: Return success ────────────────────────────────
+    // ── STEP 5: Return success ───────────────────────────────────────
     return {
       statusCode: 200,
       headers: { "Content-Type": "application/json" },
