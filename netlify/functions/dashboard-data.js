@@ -168,14 +168,18 @@ exports.handler = async (event) => {
     const totalTouchedInPeriod = touchedCycles.length;
 
     // ── Metric 5: "Hiring Need in the Period" — SUM of hiring_needs
-    //     across the DISTINCT jobs whose cycles touched the window
-    //     (same set that feeds Metric 2). hiring_needs lives on
-    //     job_requisitions (one value PER JOB, not per cycle), so we
-    //     collapse touched cycles to distinct tracktik_post_id first —
-    //     this prevents a reopened job (two cycle rows) from counting
-    //     its hiring need twice. Missing/null values contribute 0,
-    //     matching how avg_days_to_hire ignores nulls.
-    const hiringNeedPostIds = new Set(touchedCycles.map(c => c.tracktik_post_id));
+    //     across the DISTINCT jobs that are STILL OPEN and touched the
+    //     window. Closed jobs are excluded: once a role is filled it no
+    //     longer represents an outstanding hiring need, so counting it
+    //     overstates how many people we still need to hire.
+    //     hiring_needs lives on job_requisitions (one value PER JOB, not
+    //     per cycle), so we collapse the open touched cycles to distinct
+    //     tracktik_post_id first — this prevents a reopened job (two cycle
+    //     rows) from counting its hiring need twice. Missing/null values
+    //     contribute 0, matching how avg_days_to_hire ignores nulls.
+    const hiringNeedPostIds = new Set(
+      touchedCycles.filter(c => c.is_open === true).map(c => c.tracktik_post_id)
+    );
     let hiringNeedInPeriod = 0;
     for (const pid of hiringNeedPostIds) {
       const job = jobMap.get(pid);
