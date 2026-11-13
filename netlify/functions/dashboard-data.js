@@ -146,8 +146,15 @@ exports.handler = async (event) => {
         return job && job.immediate_openings != null && parseInt(job.immediate_openings, 10) > 0;
       })
       .map(c => parseFloat(c.days_to_hire));
+    // Custom rounding rule (client, 2026-11): fractional part <= .5 rounds
+    // DOWN, >= .6 rounds UP. NOT standard rounding — do not "fix" to .5-up.
+    // (+1e-9 guards floats like 0.5999999 that are really 0.6.)
+    const roundDays = (v) => {
+      const whole = Math.floor(v);
+      return (v - whole) + 1e-9 >= 0.6 ? whole + 1 : whole;
+    };
     const avgDays = filledDays.length > 0
-      ? parseFloat((filledDays.reduce((a,b)=>a+b,0)/filledDays.length).toFixed(1))
+      ? roundDays(filledDays.reduce((a,b)=>a+b,0)/filledDays.length)
       : null;
 
     // ── Metric 2: "Total Job Req During Period" — counts TOUCH-EVENTS

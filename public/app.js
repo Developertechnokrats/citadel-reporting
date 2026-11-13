@@ -119,7 +119,7 @@ function renderTable(cycles) {
 
     const openedFmt   = cycle.opened_at  ? fmtDate(cycle.opened_at)  : "—";
     const closedFmt   = cycle.closed_at  ? fmtDate(cycle.closed_at)  : "—";
-    const daysFmt     = cycle.days_to_hire != null ? Number(cycle.days_to_hire).toFixed(1) + "d" : "—";
+    const daysFmt     = fmtDays(cycle.days_to_hire);
     const cycleIsOpen = cycle.is_open;
     const jobStatus   = job.current_status || "created";
 
@@ -297,7 +297,7 @@ function buildDetailHTML(job, cycles, history) {
       </div>
       <div>
         <div class="cycle-row-label">Days to Hire</div>
-        <div class="cycle-row-val">${c.days_to_hire != null ? Number(c.days_to_hire).toFixed(1) + "d" : "—"}</div>
+        <div class="cycle-row-val">${fmtDays(c.days_to_hire)}</div>
       </div>
       <div>
         <div class="cycle-row-label">% Time to Hire</div>
@@ -377,6 +377,18 @@ function fmtDate(iso) {
     month: "2-digit", day: "2-digit", year: "numeric",
     timeZone: "UTC"
   });
+}
+
+// Days-to-hire rounding — client rule (2026-11): fractional part <= .5 rounds
+// DOWN, >= .6 rounds UP. NOT standard rounding. Mirrors roundDays in
+// netlify/functions/dashboard-data.js (keep both in sync).
+function fmtDays(val) {
+  if (val == null) return "—";
+  const v = Number(val);
+  if (Number.isNaN(v)) return "—";
+  const whole = Math.floor(v);
+  const rounded = (v - whole) + 1e-9 >= 0.6 ? whole + 1 : whole;
+  return rounded + "d";
 }
 
 function fmtDateFull(iso) {
