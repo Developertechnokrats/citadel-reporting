@@ -44,7 +44,13 @@ function mapPayloadToRecord(payload) {
     disqualifying_questions:       payload["Disqualifying Questions"],
     employment_status:             payload["Employment Status"],
     hiring_manager:                toTitleCase(payload["Hiring Manager"]),
-    hiring_needs:                  toIntOrNull(payload["Hiring Needs"]),
+    // Immediate vacancy: GHL field renamed to "Immediate Vacancy" but the webhook
+    // still sends the key "Hiring Needs" (confirmed 2026-11-13). Read both to be safe.
+    immediate_openings:            toIntOrNull(payload["Hiring Needs"] ?? payload["Immediate Vacancy"]),
+    // Planned replacement hiring: new GHL field, webhook key below (empty arrives as "null").
+    planned_openings:              toIntOrNull(payload["Planned Replacement Hiring Need"]),
+    // Keep hiring_needs in sync for backward compatibility (== immediate).
+    hiring_needs:                  toIntOrNull(payload["Hiring Needs"] ?? payload["Immediate Vacancy"]),
     hr_approval_status:            payload["HR Approval Status"],
     in_person_interview_address:   payload["In-Person Interview Physical Address"],
     industry:                      payload["Industry"],

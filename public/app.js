@@ -20,7 +20,8 @@ const regionSelect = document.getElementById("f-region");
 const statOpenedPeriod = document.getElementById("stat-opened-period");
 const statActivePeriod = document.getElementById("stat-active-period");
 const statClosedPeriod = document.getElementById("stat-closed-period");
-const statHiringNeed   = document.getElementById("stat-hiring-need");
+const statImmediate    = document.getElementById("stat-immediate");
+const statPlanned      = document.getElementById("stat-planned");
 const statAvgDays      = document.getElementById("stat-avg-days");
 
 const modalOverlay  = document.getElementById("modal-overlay");
@@ -67,7 +68,8 @@ async function loadDashboard() {
     statOpenedPeriod.textContent = (data.summary?.opened_in_period ?? 0).toLocaleString();
     statActivePeriod.textContent = (data.summary?.total_touched_in_period ?? 0).toLocaleString();
     statClosedPeriod.textContent = (data.summary?.closed_in_period ?? 0).toLocaleString();
-    statHiringNeed.textContent   = (data.summary?.hiring_need_in_period ?? 0).toLocaleString();
+    statImmediate.textContent    = (data.summary?.immediate_in_period ?? 0).toLocaleString();
+    statPlanned.textContent      = (data.summary?.planned_in_period ?? 0).toLocaleString();
     statAvgDays.textContent      = data.summary?.avg_days_to_hire != null
       ? data.summary.avg_days_to_hire + "d"
       : "—";
@@ -138,7 +140,8 @@ function renderTable(cycles) {
       <td><span class="cell-id">${esc(cycle.tracktik_post_id)}</span></td>
       <td><span class="cell-site" title="${esc(job.site_name_position_shift || "")}">${esc(job.site_name_position_shift || "—")}</span></td>
       <td>${esc(job.region || "—")}</td>
-      <td class="cell-hiring-need">${job.hiring_needs != null ? esc(String(job.hiring_needs)) : "—"}</td>
+      <td class="cell-hiring-need">${job.immediate_openings != null ? esc(String(job.immediate_openings)) : "—"}</td>
+      <td class="cell-hiring-need">${job.planned_openings != null ? esc(String(job.planned_openings)) : "—"}</td>
       <td>${esc(fmtManager(job.hiring_manager) || "—")}</td>
       <td class="cell-cycle">${cycle.cycle_number}</td>
       <td>${openedFmt}</td>
@@ -254,7 +257,8 @@ function buildDetailHTML(job, cycles, history) {
   // ── Hiring ───────────────────────────────────────────────
   const hiringFields = `
     ${row("Hiring Manager",     fmtManager(job.hiring_manager))}
-    ${row("Hiring Needs",       job.hiring_needs != null ? String(job.hiring_needs) : null)}
+    ${row("Immediate Vacancy",  job.immediate_openings != null ? String(job.immediate_openings) : null)}
+    ${row("Planned Replacement",job.planned_openings != null ? String(job.planned_openings) : null)}
     ${row("HR Approval Status", fmtEnum(job.hr_approval_status))}
     ${row("Interview Type",     fmtEnum(job.interview_type))}
     ${row("Interview Calendar", job.interview_calendar)}

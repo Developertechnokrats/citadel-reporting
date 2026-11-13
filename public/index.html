@@ -99,18 +99,34 @@
       </div>
 
       <div class="stat-card stat-card--accent">
-        <span class="stat-label">Hiring Need in the Period</span>
-        <span class="stat-value" id="stat-hiring-need">—</span>
+        <span class="stat-label">Immediate Hiring</span>
+        <span class="stat-value" id="stat-immediate">—</span>
         <div class="tt-wrap">
           <div class="tt-icon">i</div>
           <div class="tt-box">
-            <span class="tt-title">Hiring Need in the Period</span>
-            Total Hiring Needs across every distinct job that is <strong>still open</strong> and touched this window, summed by each job's latest Hiring Needs value from the database. Closed (filled) jobs are excluded — their need is no longer outstanding. A reopened job is counted once. Jobs with no Hiring Needs value add nothing.
+            <span class="tt-title">Immediate Hiring</span>
+            Sum of the <strong>Immediate Vacancy</strong> value across every distinct job that touched this window — any status (open, closed or reopened). These are positions that are new, already vacant, or whose employee has formally resigned. A reopened job is counted once. Jobs with no value add nothing. Separate from Planned Hiring — the two are never combined.
             <div class="tt-example">
               <strong>Example: Filter 08/01 → 08/06</strong>
-              6 jobs touched this window, but 1 has since closed<br>
-              5 open jobs × 2 hires each = <strong style="color:#B8962E">10</strong><br>
-              The closed job's need is not counted; a reopened job still counts its need once.
+              Jobs touched: immediate 3 + 2 + 20 = <strong style="color:#B8962E">25</strong><br>
+              Counted whether open or closed.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stat-card stat-card--accent">
+        <span class="stat-label">Planned Hiring</span>
+        <span class="stat-value" id="stat-planned">—</span>
+        <div class="tt-wrap">
+          <div class="tt-icon">i</div>
+          <div class="tt-box">
+            <span class="tt-title">Planned Hiring</span>
+            Sum of the <strong>Planned Replacement Hiring Need</strong> value across every distinct job that touched this window — any status. These are positions currently filled, but where recruitment is requested in anticipation of replacing an existing employee. A reopened job is counted once. Jobs with no value add nothing. Separate from Immediate Hiring — the two are never combined.
+            <div class="tt-example">
+              <strong>Example: Filter 08/01 → 08/06</strong>
+              Jobs touched: planned 0 + 1 + 0 = <strong style="color:#B8962E">1</strong><br>
+              Tracked separately from Immediate.
             </div>
           </div>
         </div>
@@ -123,15 +139,15 @@
           <div class="tt-icon">i</div>
           <div class="tt-box">
             <span class="tt-title">Avg Days to Hire</span>
-            Average days from a job's posted date to its fill date, for all jobs that closed within your selected window. Open jobs are not included.
+            Average days from a job's posted date to its fill date, for jobs that closed within your selected window — counting only jobs that had an <strong>Immediate Vacancy</strong>. Planned-only jobs and still-open jobs are not included. It's a simple average of each job's open→close duration (not weighted by the number of openings).
             <div class="tt-example">
               <strong>How it's calculated:</strong>
-              Total days across all filled jobs<br>
-              ÷ Number of filled jobs<br><br>
+              Total days across immediate filled jobs<br>
+              ÷ Number of those jobs<br><br>
               <strong>Example:</strong><br>
-              3 jobs closed in 5d, 8d, 21d<br>
-              (5 + 8 + 21) ÷ 3 = <strong style="color:#B8962E">11.3d avg</strong><br><br>
-              A single long-running job (e.g. 56d) will raise the average significantly.
+              3 immediate jobs closed in 14d, 20d, 20d<br>
+              (14 + 20 + 20) ÷ 3 = <strong style="color:#B8962E">18d avg</strong><br><br>
+              The number of openings per job does not change the average — only the durations do.
             </div>
           </div>
         </div>
@@ -232,7 +248,8 @@
               <th>TrackTik Post ID</th>
               <th>Site / Position</th>
               <th>Region</th>
-              <th>Hiring Need</th>
+              <th>Immediate</th>
+              <th>Planned</th>
               <th>Hiring Manager</th>
               <th>Cycle #</th>
               <th>Opened</th>

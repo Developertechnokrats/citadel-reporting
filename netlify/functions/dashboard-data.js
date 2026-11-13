@@ -52,7 +52,7 @@ exports.handler = async (event) => {
     // ── Query 1: jobs (apply job-level filters) ────────────────
     let jobQuery = supabase
       .from("job_requisitions")
-      .select("tracktik_post_id, site_name_position_shift, region, city_of_site_location, hiring_manager, officer_type, current_status, total_cycles, tracktik_site_id, ghl_id, advertised_pay_rate, first_seen_at, hiring_needs");
+      .select("tracktik_post_id, site_name_position_shift, region, city_of_site_location, hiring_manager, officer_type, current_status, total_cycles, tracktik_site_id, ghl_id, advertised_pay_rate, first_seen_at, hiring_needs, immediate_openings, planned_openings");
 
     // NOTE: status is intentionally NOT filtered here. `current_status`
     // reflects only a job's LATEST state, which drops reopened jobs out
@@ -134,7 +134,18 @@ exports.handler = async (event) => {
 
     const closedCount = new Set(closedCycles.map(c => c.tracktik_post_id)).size;
 
-    const filledDays = closedCycles.filter(c => c.days_to_hire !== null).map(c => parseFloat(c.days_to_hire));
+    // ── Metric 4: "Avg Days to Hire" — IMMEDIATE vacancies only.
+    //     Average each job's open→close duration, counting a closed cycle
+    //     only when its job has an Immediate Vacancy > 0. Planned-only jobs
+    //     are excluded. Simple average of durations — NOT weighted by the
+    //     immediate count. (Client call 2026-11-12.)
+    const filledDays = closedCycles
+      .filter(c => {
+        if (c.days_to_hire === null) return false;
+        const job = jobMap.get(c.tracktik_post_id);
+        return job && job.immediate_openings != null && parseInt(job.immediate_openings, 10) > 0;
+      })
+      .map(c => parseFloat(c.days_to_hire));
     const avgDays = filledDays.length > 0
       ? parseFloat((filledDays.reduce((a,b)=>a+b,0)/filledDays.length).toFixed(1))
       : null;
@@ -167,24 +178,23 @@ exports.handler = async (event) => {
 
     const totalTouchedInPeriod = touchedCycles.length;
 
-    // ── Metric 5: "Hiring Need in the Period" — SUM of hiring_needs
-    //     across the DISTINCT jobs that are STILL OPEN and touched the
-    //     window. Closed jobs are excluded: once a role is filled it no
-    //     longer represents an outstanding hiring need, so counting it
-    //     overstates how many people we still need to hire.
-    //     hiring_needs lives on job_requisitions (one value PER JOB, not
-    //     per cycle), so we collapse the open touched cycles to distinct
-    //     tracktik_post_id first — this prevents a reopened job (two cycle
-    //     rows) from counting its hiring need twice. Missing/null values
-    //     contribute 0, matching how avg_days_to_hire ignores nulls.
-    const hiringNeedPostIds = new Set(
-      touchedCycles.filter(c => c.is_open === true).map(c => c.tracktik_post_id)
-    );
-    let hiringNeedInPeriod = 0;
-    for (const pid of hiringNeedPostIds) {
+    // ── Metric 5: "Immediate Hiring" & "Planned Hiring" — two SEPARATE
+    //     sums across the DISTINCT jobs whose cycles touched the window
+    //     (same population as "Total Job Req", ALL statuses — a closed or
+    //     reopened job still counts). Immediate and Planned live one-per-job
+    //     on job_requisitions, so collapse to distinct tracktik_post_id first
+    //     (a reopened job counts once). They are never added together.
+    //     Null values contribute 0. (Client call 2026-11-12.)
+    const touchedPostIds = new Set(touchedCycles.map(c => c.tracktik_post_id));
+    let immediateInPeriod = 0;
+    let plannedInPeriod = 0;
+    for (const pid of touchedPostIds) {
       const job = jobMap.get(pid);
-      const hn = job && job.hiring_needs != null ? parseInt(job.hiring_needs, 10) : 0;
-      if (!Number.isNaN(hn)) hiringNeedInPeriod += hn;
+      if (!job) continue;
+      const imm = job.immediate_openings != null ? parseInt(job.immediate_openings, 10) : 0;
+      const pln = job.planned_openings   != null ? parseInt(job.planned_openings, 10)   : 0;
+      if (!Number.isNaN(imm)) immediateInPeriod += imm;
+      if (!Number.isNaN(pln)) plannedInPeriod   += pln;
     }
 
     // ── Table: show the UNION of strict (opened) + touched (overlap) + closed-in-period ──
@@ -221,7 +231,10 @@ exports.handler = async (event) => {
           total_touched_in_period: totalTouchedInPeriod,
           closed_in_period:   closedCount,
           avg_days_to_hire:   avgDays,
-          hiring_need_in_period: hiringNeedInPeriod,
+          immediate_in_period: immediateInPeriod,
+          planned_in_period:   plannedInPeriod,
+          // kept for backward compatibility (== immediate); UI uses the two keys above
+          hiring_need_in_period: immediateInPeriod,
         },
         filter_options: {
           regions:           unique("region"),
